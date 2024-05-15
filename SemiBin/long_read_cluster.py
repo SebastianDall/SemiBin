@@ -74,10 +74,11 @@ def cluster_long_read(logger, model, data, device, is_combined,
         [len(contig_dict[name]) for name in contig_list])
 
     if not is_combined:
-        depth = data.values[:, features_data["depth"]].astype(np.float32)
-        mean_index = [2 * temp for temp in range(n_sample)]
-        depth = depth[:, mean_index]
-        embedding_new = np.concatenate((embedding, np.log(depth)), axis=1)
+        # depth = data.values[:, features_data["depth"]].astype(np.float32)
+        # mean_index = [2 * temp for temp in range(n_sample)]
+        # depth = depth[:, mean_index]
+        # embedding_new = np.concatenate((embedding, np.log(depth)), axis=1)
+        embedding_new = embedding #TODO: REMOVE THIS - this is just a test of removing coverage on the embedding!
     else:
         embedding_new = embedding
 
