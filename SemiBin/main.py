@@ -532,6 +532,12 @@ def parse_args(args, is_semibin2):
                             default=200,
                             metavar='')
 
+        p.add_argument('--use-informed-cannot-links',
+                            required=False,
+                            help='Determine cannot-links by distance in methylation / kmer space.',
+                            dest='use_informed_cannot_links',
+                            action='store_true', )
+        
         g = p.add_argument_group('Binning options (advanced use)')
         g.add_argument('--max-edges',
                           required=False,
@@ -1099,7 +1105,7 @@ def generate_sequence_features_multi(logger, args):
 def training(logger, contig_fasta, num_process,
              data, data_split, cannot_link, batchsize,
              epoches,  output, device, ratio, min_length, *, mode,
-             orf_finder=None, prodigal_output_faa=None, training_type='semi'):
+             orf_finder=None, prodigal_output_faa=None, training_type='semi', use_informed_cannot_links=False):
     """
     Training the model
 
@@ -1156,7 +1162,8 @@ def training(logger, contig_fasta, num_process,
                            epoches,
                            device,
                            num_process,
-                           mode)
+                           mode,
+                           use_informed_cannot_links)
 
 
 def binning_preprocess(data, depth_metabat2, model_path, environment, device):
@@ -1308,7 +1315,7 @@ def single_easy_binning(logger, args, binned_length,
             training(logger, None,
                      args.num_process, [data_path], [data_split_path],
                      None, args.batchsize, args.epoches, args.output, device, None, None,
-                     mode='single', orf_finder=None, prodigal_output_faa=args.prodigal_output_faa, training_type='self')
+                     mode='single', orf_finder=None, prodigal_output_faa=args.prodigal_output_faa, training_type='self', use_informed_cannot_links=args.use_informed_cannot_links)
 
     binning_kwargs = {
         'logger': logger,
@@ -1378,7 +1385,7 @@ def multi_easy_binning(logger, args, device):
             training(logger, None, args.num_process,
                      [sample_data], [sample_data_split], None,
                      args.batchsize, args.epoches, os.path.join(args.output, 'samples', sample),
-                     device, None, None, mode='single', orf_finder=None, prodigal_output_faa=args.prodigal_output_faa, training_type='self')
+                     device, None, None, mode='single', orf_finder=None, prodigal_output_faa=args.prodigal_output_faa, training_type='self', use_informed_cannot_links=args.use_informed_cannot_links)
 
         binning_kwargs = {
             'logger': logger,
