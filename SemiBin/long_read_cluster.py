@@ -1,10 +1,12 @@
 import os
 import torch
 import numpy as np
+import pandas as pd
 from .utils import cal_num_bins, get_marker, write_bins
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import kneighbors_graph
 from collections import defaultdict
+from scipy.sparse import save_npz
 
 
 def get_best_bin(results_dict, contig_to_marker, namelist, contig_dict, minfasta):
@@ -48,7 +50,7 @@ def get_best_bin(results_dict, contig_to_marker, namelist, contig_dict, minfasta
 
 def cluster_long_read(logger, model, data, device, is_combined,
             n_sample, out, contig_dict, *, binned_length, args,
-            minfasta, features_data):
+            minfasta, features_data, warp_dist_matrix=False):
     import pandas as pd
     from .utils import norm_abundance
     contig_list = data.index.tolist()
@@ -100,7 +102,7 @@ def cluster_long_read(logger, model, data, device, is_combined,
                                        min_contig_len=binned_length, fasta_path=cfasta, contig_to_marker=True)
 
     output_bin_path = os.path.join(out, 'output_bins')
-
+    
     logger.debug('Running DBSCAN.')
     dist_matrix = kneighbors_graph(
         embedding_new,
@@ -109,9 +111,42 @@ def cluster_long_read(logger, model, data, device, is_combined,
         p=2,
         n_jobs=args.num_process)
 
+    # Save the sparse matrix in .npz format
+    save_npz(os.path.join(out, "dist_matrix.npz"), dist_matrix)
+    
+    if warp_dist_matrix:
+        logger.info('Warping the distance matrix based on the methylation comparison.')
+        methylation_comparison = pd.read_csv(os.path.join(out, 'methylation_comparison.csv'))
+        
+        # Convert the list to a dictionary for quick lookup
+        contig_index = {name: idx for idx, name in enumerate(contig_list)}
+
+        # Adjust distances based on the CSV data
+        for index, row in methylation_comparison.iterrows():
+            contig1 = row['contig']
+            contig2 = row['contig_compare']
+            sum_mismatches = row['sum_mismatches']
+            
+            idx1 = contig_index.get(contig1)
+            idx2 = contig_index.get(contig2)
+            
+            if idx1 is not None and idx2 is not None:
+                if sum_mismatches == 0:
+                    factor = 0.5
+                elif sum_mismatches > 0:
+                    factor = 2
+                else:
+                    continue  # Skip if sum_mismatches is a negative value (if that's a possible case)
+
+                dist_matrix[idx1, idx2] *= factor
+                dist_matrix[idx2, idx1] *= factor
+            
+        save_npz(os.path.join(out, "warped_dist_matrix.npz"), dist_matrix)
+    
+    
     DBSCAN_results_dict = {}
     for eps_value in [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55]:
-        dbscan = DBSCAN(eps=eps_value, min_samples=5, n_jobs=args.num_process, metric='precomputed')
+        dbscan = DBSCAN(eps=eps_value, min_samples=2, n_jobs=args.num_process, metric='precomputed')
         dbscan.fit(dist_matrix, sample_weight=length_weight)
         labels = dbscan.labels_
         DBSCAN_results_dict[eps_value] = labels.tolist()

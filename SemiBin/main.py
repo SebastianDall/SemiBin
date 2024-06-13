@@ -70,12 +70,84 @@ def parse_args(args, is_semibin2):
                                                   ' This will produce the data.csv and data_split.csv files.'
                                                   )
 
-    generate_methylation_features = subparsers.add_parser(
-        'generate_methylation_features',
+
+    ############## Methylation features ################
+    generate_methylation_pattern = subparsers.add_parser(
+        'generate_methylation_pattern',
         help='Generate methylation features as training data'
             ' for (semi/self)-supervised deep learning model training.'
             ' This will modify the data.csv and data_split.csv files.'
     )
+    
+    
+    mandatory_generate_methylation_pattern = generate_methylation_pattern.add_argument_group('Mandatory arguments')
+
+        
+    mandatory_generate_methylation_pattern.add_argument('-o', '--output',
+                        required=True,
+                        help='Output directory (will be created if non-existent)',
+                        dest='output',
+                        default=None,
+                        )
+    
+    mandatory_generate_methylation_pattern.add_argument(
+        "--motifs-scored",
+        required=True,
+        help="Path to the motifs-scored file created by nanomotif.",
+        dest="motifs_scored",
+        default=None,
+    )
+    
+    mandatory_generate_methylation_pattern.add_argument(
+        "--bin-motifs",
+        required=True,
+        help="Path to the bin-motifs file created by nanomotif.",
+        dest="bin_motifs",
+        default=None,
+    )
+
+    def parse_interval(string):
+        if string.startswith('[') and string.endswith(']'):
+            try:
+                # Remove the brackets and split by comma
+                items = string[1:-1].split(',')
+                # Convert to float and ensure exactly two items
+                float_items = [float(item) for item in items]
+                if len(float_items) != 2:
+                    raise ValueError("Interval must contain exactly two numbers.")
+                return float_items
+            except ValueError as e:
+                raise argparse.ArgumentTypeError(f"Invalid interval format: {string}. Error: {e}")
+        else:
+            raise argparse.ArgumentTypeError("Interval must be enclosed in brackets, e.g., [0.05,0.15]")
+
+    generate_methylation_pattern.add_argument(
+        "--ambiguous-motif-interval",
+        required=False,
+        help="Definition of the ambigious mean methylation interval of motifs. Default: [0.1,0.6]",
+        dest="ambiguous_motif_interval",
+        default=[0.1, 0.6],
+        type=parse_interval,
+    )
+    
+    generate_methylation_pattern.add_argument(
+        "--min-motif-observations",
+        required=False,
+        help="Minimum number of observations for a motif to be considered. Default: 5",
+        dest="min_motif_observations",
+        default=5,
+        )
+    
+    generate_methylation_pattern.add_argument(
+        "--min-comparisons",
+        required=False,
+        help="Minimum number of comparisons between contigs with at least one methylated motif. Default: 5",
+        dest="min_comparisons",
+        default=5,
+        )
+    
+    
+    
 
     check_install = subparsers.add_parser('check_install', help = 'Check whether required dependencies are present.')
 
@@ -272,44 +344,47 @@ def parse_args(args, is_semibin2):
 
 
     for p in [single_easy_bin, multi_easy_bin, generate_cannot_links,
-                generate_sequence_features_single, generate_sequence_features_multi, generate_methylation_features,
+                generate_sequence_features_single, generate_sequence_features_multi, 
                 binning, binning_long]:
         m = p.add_argument_group('Mandatory arguments')
 
-        m.add_argument('-i', '--input-fasta',
-                                required=True,
-                                help='Path to the input fasta file.',
-                                dest='contig_fasta',
-                                default=None,)
+        
         m.add_argument('-o', '--output',
                             required=True,
                             help='Output directory (will be created if non-existent)',
                             dest='output',
                             default=None,
                             )
+        
+        m.add_argument('-i', '--input-fasta',
+                                required=True,
+                                help='Path to the input fasta file.',
+                                dest='contig_fasta',
+                                default=None,)
         if p is binning or p is binning_long:
             m.add_argument('--data',
-                             required=True,
-                             help='Path to the input data.csv file.',
-                             dest='data',
-                             default=None,)
+                                required=True,
+                                help='Path to the input data.csv file.',
+                                dest='data',
+                                default=None,)
+        
         if p in [multi_easy_bin, generate_sequence_features_multi]:
             m.add_argument('-b', '--input-bam',
-                              required=False,
-                              nargs='*',
-                              help='Path to the input BAM(.bam)/CRAM(.cram) file(s). '
-                                   'If using multiple samples, you can input multiple files.',
-                              dest='bams',
-                              default=None,
-                              )
+                                required=False,
+                                nargs='*',
+                                help='Path to the input BAM(.bam)/CRAM(.cram) file(s). '
+                                    'If using multiple samples, you can input multiple files.',
+                                dest='bams',
+                                default=None,
+                                )
             p.add_argument('-a', '--abundance', '--abundances',
-                           required=False,
-                           nargs='*',
-                           help='Path to the abundance file from strobealign-aemb. This can only be used when samples used in binning above or equal 5.',
-                           dest='abundances',
-                           default=None,
-                           )
-        if p is not generate_methylation_features:
+                            required=False,
+                            nargs='*',
+                            help='Path to the abundance file from strobealign-aemb. This can only be used when samples used in binning above or equal 5.',
+                            dest='abundances',
+                            default=None,
+                            )
+        
             p.add_argument('--write-pre-reclustering-bins',
                     required=False,
                     help='Write pre-reclustering bins to disk.',
@@ -322,25 +397,13 @@ def parse_args(args, is_semibin2):
                         dest='no_write_pre_reclustering_bins',
                         action='store_true')
 
-            p.add_argument('--tag-output',
-                    required=False,
-                    type=str,
-                    dest='output_tag',
-                    default=('SemiBin' if is_semibin2 else None),
-                    help='Tag to add to output file names')
-        if p is generate_methylation_features:
-            m.add_argument('-b', '--pileup',
-                            required=True,
-                            help='Path to the pileup file.',
-                            dest='pileup',
-                            default=None,
-                            )
-            m.add_argument('-m', '--motifs-scored',
-                            required=True,
-                            help='Path to the motifs-scored file created by nanomotif.',
-                            dest='motifs',
-                            default=None,
-                            )
+        p.add_argument('--tag-output',
+                required=False,
+                type=str,
+                dest='output_tag',
+                default=('SemiBin' if is_semibin2 else None),
+                help='Tag to add to output file names')
+        
 
     for p in [single_easy_bin,
                 multi_easy_bin,
@@ -399,7 +462,7 @@ def parse_args(args, is_semibin2):
                        )
 
 
-    for p in [train_semi, generate_cannot_links, binning, single_easy_bin, multi_easy_bin, generate_sequence_features_single, generate_sequence_features_multi, generate_methylation_features, training_self, binning_long]:
+    for p in [train_semi, generate_cannot_links, binning, single_easy_bin, multi_easy_bin, generate_sequence_features_single, generate_sequence_features_multi, generate_methylation_pattern, training_self, binning_long]:
         p.add_argument('-p', '--processes', '-t', '--threads',
                    required=False,
                    type=int,
@@ -600,7 +663,13 @@ def parse_args(args, is_semibin2):
                        help='device used to train the model (auto/gpu/cpu, auto means if SemiBin detects the gpu, SemiBin will use GPU)',
                        dest='engine',
                        default='auto')
-
+        if p in [binning_long]:
+                p.add_argument(
+                    '--warp-distance-matrix',
+                    help='if set, kmer/abundance distance matrix will be warped by methylation',
+                    action='store_true',
+                    dest='warp_distance_matrix'
+                )
     for p in [single_easy_bin, multi_easy_bin]:
         p.add_argument('--semi-supervised',
                            required=False,
@@ -1102,6 +1171,89 @@ def generate_sequence_features_multi(logger, args):
     return sample_list
 
 
+
+def generate_methylation_pattern(logger, motifs_scored, bin_motifs, out, ambiguous_interval=[0.1,0.6], min_motif_observations=5, threads = 1,min_comparisons = 5):
+    """
+    
+    """
+    import polars as pl
+    from .methylation_pattern import compare_methylation_pattern_multiprocessed
+    logger.info('Start generating methylation pattern.')
+    logger.info('Loading data')
+    ## Load data
+    motifs_scored = pl.read_csv(motifs_scored, separator = "\t")
+    bin_motifs = pl.read_csv(bin_motifs, separator = "\t")
+    
+    ## Filter motifs
+    ### Bin motifs
+    bin_motifs = bin_motifs\
+        .with_columns(
+            (pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String)).alias("motif_mod"),
+            (pl.col("n_mod_bin") + pl.col("n_nomod_bin")).alias("n_motifs")
+        )\
+        .with_columns(
+            (pl.col("n_mod_bin") / pl.col("n_motifs")).alias("frac_mod")
+        )\
+        .filter(pl.col("n_motifs") > 800, pl.col("frac_mod") > 0.6)\
+        .get_column("motif_mod")\
+        .unique()
+
+    ### Filter motifs_scored
+    motifs_scored = motifs_scored\
+        .with_columns(
+            (pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String)).alias("motif_mod")
+        )\
+        .filter(pl.col("motif_mod").is_in(bin_motifs))    
+
+    ### remove motifs with low observations
+    motifs_scored = motifs_scored\
+        .with_columns(
+            (pl.col("n_mod") + pl.col("n_nomod")).alias("n_motifs")
+        )\
+        .filter(pl.col("n_motifs") > min_motif_observations)
+
+    ### remove ambiguous motifs per contig
+    motifs_scored = motifs_scored\
+        .with_columns(
+            (pl.col("n_mod") / (pl.col("n_mod") + pl.col("n_nomod"))).alias("mod_ratio")
+        )\
+        .with_columns(
+            ((pl.col("mod_ratio") > ambiguous_interval[0]) & (pl.col("mod_ratio") < ambiguous_interval[1])).alias("is_ambiguous")
+        )\
+        .filter(pl.col("is_ambiguous") == False)
+    
+    ## Compare methylation pattern between contigs
+    ### Cast to binary comparison
+    methylation_binary = motifs_scored\
+        .with_columns(
+            (pl.col("mod_ratio") > 0.5).cast(pl.Int8).alias("is_methylated")
+        )\
+        .select([
+            "contig",
+            "motif_mod",
+            "is_methylated"
+        ])
+    
+    ### Remove contigs with no methylation    
+    contigs_w_at_least_one_methylated_motif = methylation_binary\
+        .filter(pl.col("is_methylated") == 1)\
+        .get_column("contig")\
+        .unique()
+        
+        
+    methylation_binary = methylation_binary\
+        .filter(pl.col("contig").is_in(contigs_w_at_least_one_methylated_motif))
+        
+    methylation_comparison = compare_methylation_pattern_multiprocessed(methylation_binary, threads=threads)
+    print(methylation_comparison)
+    methylation_comparison = methylation_comparison\
+        .filter(
+            ((pl.col("sum_mismatches") == 0) & (pl.col("n_comparisons") > int(min_comparisons)) | (pl.col("sum_mismatches") > 0))
+        )
+    
+    methylation_comparison.write_csv(os.path.join(out, 'methylation_comparison.csv'))
+
+
 def training(logger, contig_fasta, num_process,
              data, data_split, cannot_link, batchsize,
              epoches,  output, device, ratio, min_length, *, mode,
@@ -1223,7 +1375,8 @@ def binning_long(logger, data, minfasta, binned_length, contig_dict,
                       binned_length=binned_length,
                       minfasta=minfasta,
                       args=args,
-                      features_data=features_data
+                      features_data=features_data,
+                      warp_dist_matrix=args.warp_distance_matrix
                       )
 
 def binning_short(logger, data, minfasta,
@@ -1593,6 +1746,19 @@ def main2(args=None, is_semibin2=True):
                     orf_finder=args.orf_finder,
                     training_type='semi')
 
+        elif args.cmd == 'generate_methylation_pattern':
+            generate_methylation_pattern(
+                logger = logger, 
+                motifs_scored = args.motifs_scored,
+                bin_motifs = args.bin_motifs, 
+                out = args.output,
+                ambiguous_interval = args.ambiguous_motif_interval, 
+                min_motif_observations = args.min_motif_observations,
+                min_comparisons = args.min_comparisons,
+                threads = args.num_process, 
+            )
+            
+        
         elif args.cmd == 'train_self':
             training(logger,
                     contig_fasta=None,
