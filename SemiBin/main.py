@@ -126,7 +126,7 @@ def parse_args(args, is_semibin2):
         required=False,
         help="Definition of the ambigious mean methylation interval of motifs. Default: [0.1,0.6]",
         dest="ambiguous_motif_interval",
-        default=[0.1, 0.6],
+        default=[0.05, 0.5],
         type=parse_interval,
     )
     
@@ -1245,11 +1245,14 @@ def generate_methylation_pattern(logger, motifs_scored, bin_motifs, out, ambiguo
         .filter(pl.col("contig").is_in(contigs_w_at_least_one_methylated_motif))
         
     methylation_comparison = compare_methylation_pattern_multiprocessed(methylation_binary, threads=threads)
-    print(methylation_comparison)
+    
+    # Filter uninformative comparisons and deduplicate comparisons
     methylation_comparison = methylation_comparison\
+        .filter(pl.col("n_comparisons") >= 5)\
         .filter(
-            ((pl.col("sum_mismatches") == 0) & (pl.col("n_comparisons") > int(min_comparisons)) | (pl.col("sum_mismatches") > 0))
-        )
+            ((pl.col("sum_mismatches") == 0) & (pl.col("n_comparisons") >= int(min_comparisons)) | (pl.col("sum_mismatches") > 0))
+        )\
+        .filter((pl.col("contig") + pl.col("contig_compare")) != (pl.col("contig_compare") + pl.col("contig")))
     
     methylation_comparison.write_csv(os.path.join(out, 'methylation_comparison.csv'))
 
