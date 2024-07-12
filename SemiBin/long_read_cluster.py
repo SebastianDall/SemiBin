@@ -132,21 +132,21 @@ def cluster_long_read(logger, model, data, device, is_combined,
             
             if idx1 is not None and idx2 is not None:
                 if sum_mismatches == 0:
-                    factor = 0.5
+                    factor = 0.85
                 elif sum_mismatches > 0:
                     factor = 2
                 else:
                     continue  # Skip if sum_mismatches is a negative value (if that's a possible case)
 
                 dist_matrix[idx1, idx2] *= factor
-                dist_matrix[idx2, idx1] *= factor
+                # dist_matrix[idx2, idx1] *= factor
             
         save_npz(os.path.join(out, "warped_dist_matrix.npz"), dist_matrix)
     
     
     DBSCAN_results_dict = {}
     for eps_value in [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55]:
-        dbscan = DBSCAN(eps=eps_value, min_samples=2, n_jobs=args.num_process, metric='precomputed')
+        dbscan = DBSCAN(eps=eps_value, min_samples=5, n_jobs=args.num_process, metric='precomputed')
         dbscan.fit(dist_matrix, sample_weight=length_weight)
         labels = dbscan.labels_
         DBSCAN_results_dict[eps_value] = labels.tolist()
