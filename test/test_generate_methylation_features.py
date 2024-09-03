@@ -124,8 +124,13 @@ def test_find_read_methylation(data):
     assert all(scored_n_modified.get_column("sum_N_valid_cov") == split_n_modified.get_column("sum_N_valid_cov"))
     
 
+def test_find_motif_indexes(data):
+    assembly = data["assembly"]
+    motif = Motif("GATC", 1)
+    fwd_indexes = find_motif_indexes(assembly["contig_10"].seq, motif)
 
-
+    assert len(fwd_indexes) == assembly["contig_10"].count("GATC")
+    
 
 class TestCheckFilesExist(unittest.TestCase):
 
