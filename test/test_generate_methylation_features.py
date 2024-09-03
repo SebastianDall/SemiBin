@@ -7,109 +7,128 @@ import os
 
 class SetupArgs:
     def __init__(self):
-        self.bed = "test/methylation_data/pileup.bed"
+        self.pileup = "test/methylation_data/pileup.bed"
         self.contig_fasta = "test/methylation_data/assembly.fasta"
-        self.motifs_scored = "test/methylation_data/motifs-scored.tsv"
         self.bin_motifs = "test/methylation_data/bin-motifs.tsv"
         self.data = "test/methylation_data/data.csv"
         self.data_split = "test/methylation_data/data_split.csv"
-        self.motif_index_dir = "test/methylation_data/motif-positions"
-        self.min_fraction = 0.6
         self.num_process = 1
-        self.motif_occurence_cutoff = 0.9
-        self.min_motif_observations = 1
+        self.min_motif_observations = 500
+        self.min_motif_methylation = 0.5
+        self.min_valid_read_coverage= 8
         self.output = "test_output"
 
 @pytest.fixture
 def data():
     args = SetupArgs()
     logger = MagicMock()
-    motifs_scored, data, data_split, bin_consensus = load_data(args, logger)
+    pileup, data, data_split, bin_consensus = load_data(args, logger)
     
-    contigs = get_contigs(data_split)
     
-    assembly = read_fasta(args.contig_fasta, contigs)
+    assembly = read_fasta(args.contig_fasta)
     
-    # Get lenths of the contigs
-    contig_lengths = {contig: len(sequence) for contig, sequence in assembly.items()}
+    # Get the unique motifs
+    motifs = bin_consensus\
+        .select(["motif", "mod_position", "mod_type", "n_mod_bin", "n_nomod_bin"])\
+        .with_columns(
+            motif_mod = pl.col("motif") + "_" + pl.col("mod_position").cast(pl.String) + "_" + pl.col("mod_type"),
+            n_motifs = pl.col("n_mod_bin") + pl.col("n_nomod_bin")
+        )\
+        .filter(pl.col("n_motifs") >= args.min_motif_observations)\
+        .unique(["motif_mod"])
+
+    if len(motifs) == 0:
+        logger.error(f"No motifs found")
+        sys.exit(1)
+    
+    motif_list = [(Motif(row[0], row[1]), row[2])for row in motifs.unique(["motif", "mod_position"]).iter_rows()]
+    contigs_in_split = data_split.select("contig").to_pandas()
+    contigs_in_split = contigs_in_split["contig"].str.rsplit("_",n=1).str[0].unique()
+
+    contigs = {}
+    for c in data.get_column("contig"):
+        if c in contigs_in_split:
+            contigs[c] = True
+        else:
+            contigs[c] = False
     
     return {
         "args": args,
         "data_split": data_split,
         "data": data,
+        "pileup": pileup,
         "bin_consensus": bin_consensus,
-        "contig_fasta": assembly,
-        "motifs_scored": motifs_scored,
+        "assembly": assembly,
         "contigs": contigs,
-        "contig_lengths": contig_lengths
+        "motif_list": motif_list
     }
 
 
-def test_get_motifs(data):
-    """
-    Test get_motifs function at different cutoffs.
-    """
-    bin_consensus = data["bin_consensus"]
-    data = data["motifs_scored"]
+# def test_get_motifs(data):
+#     """
+#     Test get_motifs function at different cutoffs.
+#     """
+#     bin_consensus = data["bin_consensus"]
+#     data = data["motifs_scored"]
     
-    motifs_all = get_motifs(data, bin_consensus, occurence_cutoff=0)
-    motifs_all_len = len([motif for motifs in motifs_all.values() for motif in motifs])
+#     motifs_all = get_motifs(data, bin_consensus, occurence_cutoff=0)
+#     motifs_all_len = len([motif for motifs in motifs_all.values() for motif in motifs])
     
-    motifs_90 = get_motifs(data, bin_consensus, occurence_cutoff=0.9)
-    motifs_90_len = len([motif for motifs in motifs_90.values() for motif in motifs])
+#     motifs_90 = get_motifs(data, bin_consensus, occurence_cutoff=0.9)
+#     motifs_90_len = len([motif for motifs in motifs_90.values() for motif in motifs])
     
-    assert motifs_all_len > motifs_90_len, "All motifs should be greater than 90% cutoff."
-    assert motifs_all_len == 17, "All motifs should be 17."
+#     assert motifs_all_len > motifs_90_len, "All motifs should be greater than 90% cutoff."
+#     assert motifs_all_len == 17, "All motifs should be 17."
     
 
 
 
-def test_data_split_methylation_parallel(data):
-    contig_lengths = data["contig_lengths"]
-    motifs_scored = data["motifs_scored"]
-    bin_consensus = data["bin_consensus"]
+def test_find_read_methylation(data):
+    contigs = data["contigs"]
+    pileup = data["pileup"]
+    motif_list = data["motif_list"]
+    assembly = data["assembly"]
     args = SetupArgs()
     
-    motifs = get_motifs(motifs_scored, bin_consensus, 0.9)
-    
-    contig_split_methylation = data_split_methylation_parallel(contig_lengths, motifs, args.motif_index_dir)
+    contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process)
+
     
     contig_split_methylation = contig_split_methylation\
         .with_columns(
-            motif = pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String)
+            motif = pl.col("motif") + "_" + pl.col("motif_type") + "-" + pl.col("mod_position").cast(pl.String)
         )
         
         
-    motifs_scored = motifs_scored\
+    contig_methylation = contig_methylation\
         .with_columns(
-            motif = pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String)
+            motif = pl.col("motif") + "_" + pl.col("motif_type") + "-" + pl.col("mod_position").cast(pl.String)
         )\
         .filter(pl.col("contig") == "contig_10")
     
     
     motif = "RGATCY_a-1"
     
-    split_n_mod = contig_split_methylation\
+    split_n_modified = contig_split_methylation\
         .filter(pl.col("motif") == motif)\
-        .get_column("n_mod").to_list()
+        .get_column("sum_N_modified").to_list()
         
-    scored_n_mod = motifs_scored\
+    scored_n_modified = contig_methylation\
         .filter(pl.col("motif") == motif)\
-        .get_column("n_mod").to_list()
+        .get_column("sum_N_modified").to_list()
     
     
-    assert sum(split_n_mod) == sum(scored_n_mod)
+    assert sum(split_n_modified) == sum(scored_n_modified)
     
-    split_n_nomod = contig_split_methylation\
+    split_n_valid_cov= contig_split_methylation\
         .filter(pl.col("motif") == motif)\
-        .get_column("n_nomod").to_list()
+        .get_column("sum_N_valid_cov").to_list()
     
-    scored_n_nomod = motifs_scored\
+    scored_n_valid_cov= contig_methylation\
         .filter(pl.col("motif") == motif)\
-        .get_column("n_nomod").to_list()
-    
-    assert sum(split_n_nomod) == sum(scored_n_nomod)
-    
+        .get_column("sum_N_valid_cov").to_list()
+
+    assert sum(split_n_valid_cov) == sum(scored_n_valid_cov)
+
 
 
 
@@ -123,7 +142,7 @@ class TestCheckFilesExist(unittest.TestCase):
         # args = SetupArgs('motifs_scored.txt', 'data.txt', 'data_split.txt', 'assembly.fasta', 'motif_index_dir')
         args = SetupArgs()
         # No exception should be raised if all files exist
-        paths = [args.motifs_scored, args.data, args.data_split, args.contig_fasta]
+        paths = [args.pileup, args.data, args.data_split, args.contig_fasta]
         try:
             check_files_exist(paths)
         except FileNotFoundError:
