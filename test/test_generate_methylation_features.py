@@ -106,28 +106,23 @@ def test_find_read_methylation(data):
         .filter(pl.col("contig") == "contig_10")
     
     
-    motif = "RGATCY_a-1"
     
     split_n_modified = contig_split_methylation\
-        .filter(pl.col("motif") == motif)\
-        .get_column("sum_N_modified").to_list()
-        
+        .group_by("motif")\
+        .agg(
+            pl.col("sum_N_valid_cov").sum().alias("sum_N_valid_cov"),
+            pl.col("sum_N_modified").sum().alias("sum_N_modified")
+        ).sort("motif")
     scored_n_modified = contig_methylation\
-        .filter(pl.col("motif") == motif)\
-        .get_column("sum_N_modified").to_list()
+        .group_by("motif")\
+        .agg(
+            pl.col("sum_N_valid_cov").sum().alias("sum_N_valid_cov"),
+            pl.col("sum_N_modified").sum().alias("sum_N_modified")
+        ).sort("motif")
+       
+    assert all(scored_n_modified.get_column("sum_N_modified") == split_n_modified.get_column("sum_N_modified"))
+    assert all(scored_n_modified.get_column("sum_N_valid_cov") == split_n_modified.get_column("sum_N_valid_cov"))
     
-    
-    assert sum(split_n_modified) == sum(scored_n_modified)
-    
-    split_n_valid_cov= contig_split_methylation\
-        .filter(pl.col("motif") == motif)\
-        .get_column("sum_N_valid_cov").to_list()
-    
-    scored_n_valid_cov= contig_methylation\
-        .filter(pl.col("motif") == motif)\
-        .get_column("sum_N_valid_cov").to_list()
-
-    assert sum(split_n_valid_cov) == sum(scored_n_valid_cov)
 
 
 
