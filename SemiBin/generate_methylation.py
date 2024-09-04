@@ -108,13 +108,9 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
         fwd_indexes = find_motif_indexes(contig.seq, motif)
         rev_indexes = find_motif_indexes(contig.seq, motif.reverse_compliment())
 
-        p_fwd = pileup.select([
-            "contig", "start", "strand","motif_type", "N_modified", "N_valid_cov"
-        ]).filter(pl.col("contig") == contig.id).filter(pl.col("strand") == "+", pl.col("motif_type") == mod_type, pl.col("start").is_in(fwd_indexes)).collect()
+        p_fwd = pileup.filter(pl.col("strand") == "+", pl.col("motif_type") == mod_type, pl.col("start").is_in(fwd_indexes))
         
-        p_rev = pileup.select([
-            "contig", "start", "strand","motif_type", "N_modified", "N_valid_cov"
-        ]).filter(pl.col("contig") == contig.id).filter(pl.col("strand") == "-", pl.col("motif_type") == mod_type, pl.col("start").is_in(rev_indexes)).collect()
+        p_rev = pileup.filter(pl.col("strand") == "-", pl.col("motif_type") == mod_type, pl.col("start").is_in(rev_indexes))
 
         p_con = pl.concat([p_fwd, p_rev])
 
@@ -181,11 +177,18 @@ def worker_function(task, motifs, counter, lock):
         return None, None
 
 
-def find_read_methylation(contigs, pileup, assembly, motifs, threads=1):
+def find_read_methylation(contigs, pileup, assembly, motifs, logger, threads=1):
     """
     Calculate methylation pattern for each contig in the data split in parallel.
     """
-    tasks = [(pileup, assembly[contig], contigs[contig]) for contig in contigs.keys()]
+    logger.info("Creating tasks")
+    tasks = []
+    for contig in contigs.keys():
+        subpileup = pileup.filter(pl.col("contig") == contig)
+        task = (subpileup, assembly[contig], contigs[contig])
+        tasks.append(task)
+    logger.info("Tasks done")
+    
     # Create a progress manager
     manager = multiprocessing.Manager()
     counter = manager.Value('i', 0)
@@ -318,10 +321,12 @@ def generate_methylation_features(logger, args):
             contigs[c] = True
         else:
             contigs[c] = False
+
+    pileup = pileup.select(["contig", "start", "strand","motif_type", "N_modified", "N_valid_cov"]).collect()
     
     # Create methylation matrix for contig_splits
     logger.info(f"Calculating methylation pattern for each contig split using {args.num_process} threads.")
-    contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process)
+    contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process, logger = logger)
     
     data_split_methylation_matrix = create_methylation_matrix(
         methylation_features = contig_split_methylation,
