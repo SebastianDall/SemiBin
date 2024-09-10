@@ -339,7 +339,9 @@ def generate_methylation_features(logger, args):
             on = "contig",
             how = "left"
         )\
-        .rename({"contig": ''})
+        .rename({"contig": ''})\
+        .fill_nan(0.0)\
+        .fill_null(0.0)
         
     data_methylation_matrix = create_methylation_matrix(
         methylation_features=contig_methylation,
@@ -352,7 +354,10 @@ def generate_methylation_features(logger, args):
             on = "contig",
             how = "left"
         )\
-        .rename({"contig": ''})    
+        .rename({"contig": ''})\
+        .fill_nan(0.0)\
+        .fill_null(0.0)
+ 
     try:
         logger.info("Writing to data and data_split files...")
         data_split.write_csv(os.path.join(args.output, "data_split.csv"), separator=",", quote_style='never') 
