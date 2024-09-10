@@ -90,7 +90,9 @@ def test_find_read_methylation(data):
     assembly = data["assembly"]
     args = SetupArgs()
     
-    contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process)
+    logger = MagicMock()
+    pileup = pileup.collect()
+    contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, logger, threads=args.num_process)
 
     
     contig_split_methylation = contig_split_methylation\
@@ -102,10 +104,9 @@ def test_find_read_methylation(data):
     contig_methylation = contig_methylation\
         .with_columns(
             motif = pl.col("motif") + "_" + pl.col("motif_type") + "-" + pl.col("mod_position").cast(pl.String)
-        )\
-        .filter(pl.col("contig") == "contig_10")
+        )
     
-    
+    print(contig_split_methylation)
     
     split_n_modified = contig_split_methylation\
         .group_by("motif")\
@@ -119,10 +120,34 @@ def test_find_read_methylation(data):
             pl.col("sum_N_valid_cov").sum().alias("sum_N_valid_cov"),
             pl.col("sum_N_modified").sum().alias("sum_N_modified")
         ).sort("motif")
-       
+    
     assert all(scored_n_modified.get_column("sum_N_modified") == split_n_modified.get_column("sum_N_modified"))
     assert all(scored_n_modified.get_column("sum_N_valid_cov") == split_n_modified.get_column("sum_N_valid_cov"))
     
+
+# def test_no_na(data):
+#     contigs = data["contigs"]
+#     pileup = data["pileup"]
+#     motif_list = data["motif_list"]
+#     assembly = data["assembly"]
+#     args = SetupArgs()
+    
+#     contigs["contig_20"] = True
+#     p = pl.DataFrame({
+#         "contig"
+#     })
+    
+    
+    
+#     contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process)
+
+    
+#     contig_split_methylation = contig_split_methylation\
+#         .with_columns(
+#             motif = pl.col("motif") + "_" + pl.col("motif_type") + "-" + pl.col("mod_position").cast(pl.String)
+#         )
+        
+        
 
 def test_find_motif_indexes(data):
     assembly = data["assembly"]
