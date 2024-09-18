@@ -288,6 +288,14 @@ def data_split_methylation_parallel(contig_lengths, motifs, motif_index_dir, thr
     return methylation_pattern
     
 
+def sort_columns(cols):
+    mod_columns = sorted([col for col in cols if "n_mod" in col], key=lambda x: x.split("_")[-2:])
+    nomod_columns = sorted([col for col in cols if "n_nomod" in col], key=lambda x: x.split("_")[-2:])
+    # Interleave the mod and nomod columns
+    sorted_columns = [val for pair in zip(mod_columns, nomod_columns) for val in pair]
+    return ["contig"] + sorted_columns  # Keep 'contig' as the first column
+
+
 def create_methylation_matrix(methylation_features, motifs=None, min_motif_observations = 8):
     """
     Creates a feature matrix with methylation from motifs-scored or methylation features.
@@ -300,7 +308,6 @@ def create_methylation_matrix(methylation_features, motifs=None, min_motif_obser
     # Calculate mean methylation for each motif
     matrix = methylation_features\
         .with_columns(
-            mean = pl.col("n_mod") / (pl.col("n_mod") + pl.col("n_nomod")),
             motif_mod = pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String),
             n_motifs = pl.col("n_mod") + pl.col("n_nomod")
         )\
@@ -309,14 +316,22 @@ def create_methylation_matrix(methylation_features, motifs=None, min_motif_obser
     if motifs:
         matrix = matrix.filter(pl.col("motif_mod").is_in(motifs))
     
-    matrix = matrix.select(["contig", "motif_mod", "mean"])\
+    matrix = matrix.select(["contig", "motif_mod", "n_mod", "n_nomod"])\
         .pivot(
             index = "contig",
             columns = "motif_mod",
-            values = "mean",
-            aggregate_function = "first"
+            values = pl.selectors.starts_with("n_"),
+            aggregate_function = None,
+            maintain_order = True
         )\
-        .fill_null(0.0)
+        .rename(
+            lambda column_name: column_name.replace("motif_mod_", "")
+        )\
+        .fill_null(0)
+
+
+        new_columns=sort_columns(matrix)
+        matrix = matrix.select(new_columns)
     
     return matrix
 
