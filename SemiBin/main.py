@@ -299,14 +299,6 @@ def parse_args(args, is_semibin2, with_methylation):
                              help='Path to the input data.csv file.',
                              dest='data',
                              default=None,)
-            if with_methylation:
-                m.add_argument(
-                    "--motifs-scored",
-                    help="Path to the motifs scored file.",
-                    required=True,
-                    dest="motifs_scored",
-                    default=None,
-                )
             
         if p in [multi_easy_bin, generate_sequence_features_multi]:
             m.add_argument('-b', '--input-bam',
@@ -352,8 +344,9 @@ def parse_args(args, is_semibin2, with_methylation):
                 m.add_argument("--motif-index-dir", help="Path to the motif index directory.", required=True)
                 p.add_argument("--data", help="Path to the data file to append methylation.", required=False)
                 p.add_argument("--data-split", help="Path to the data split file to append methylation.", required=False)
-                p.add_argument("--motif-occurence-cutoff", help="Percent occurences in contigs.", default=0.9, type=float)
-                p.add_argument("--min-motif-observations", help="Minimum motif coverage.", default=8, type=int)
+                p.add_argument("--motif-occurence-cutoff", help="Percent occurences in contigs.", default=0, type=float)
+                p.add_argument("--min-motif-observations-contig", help="Minimum motif coverage.", default=8, type=int)
+                p.add_argument("--min-motif-observations-bin", help="Minimum motif coverage in bin-motifs", default=1000, type=int)
                 
 
     for p in [single_easy_bin,

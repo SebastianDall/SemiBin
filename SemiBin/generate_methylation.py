@@ -89,7 +89,6 @@ def check_files_exist(paths=[], directories=[]):
 
 def load_data(args, logger):
     """Loads data"""
-    # try:
     motifs_scored = pl.read_csv(args.motifs_scored, separator="\t")
     # Remove beta initial 1 from n_nomod
     motifs_scored = motifs_scored\
@@ -106,10 +105,22 @@ def load_data(args, logger):
     data_split = data_split\
         .rename({"": "contig"})
 
-    # except Exception as e:
-    #     logger.error(f"An unexpected error occurred: {e}")
-    #     sys.exit(1)  # Exit the program with an error code
+    # Check if the columns are present in motifs_scored.columns
+    assert all(col in motifs_scored.columns for col in ["contig", "motif", "mod_position", "mod_type", "n_mod", "n_nomod"]), \
+        "motifs-scored.tsv does not contain the correct columns"
 
+    # Check if the columns are present in bin_consensus.columns
+    assert all(col in bin_consensus.columns for col in ["bin", "motif", "mod_position", "mod_type", "n_mod_bin", "n_nomod_bin"]), \
+        "bin-motifs.tsv does not contain the correct columns"
+
+    # Check if the columns are present in data_split.columns
+    assert all(col in data_split.columns for col in ["contig"] + [str(x) for x in range(136)]), \
+        "data_split.csv does not contain the correct columns"
+
+    # Check if the columns are present in data.columns
+    assert all(col in data.columns for col in ["contig"] + [str(x) for x in range(136)]), \
+        "data.csv does not contain the correct columns"
+                    
     logger.info("Data loaded successfully.")
     return motifs_scored, data, data_split, bin_consensus
 
@@ -123,7 +134,7 @@ def get_contigs(data_split):
     contigs_in_split.sort()  # Sort the list in place
     return contigs_in_split
 
-def get_motifs(motifs_scored, bin_consensus, occurence_cutoff=0.9, min_motif_observations = 8):
+def get_motifs(motifs_scored, bin_consensus, occurence_cutoff, min_motif_observations_contig, min_motif_observations_bin):
     """Extracts and returns unique motifs for each contig."""
     motifs_in_bin_consensus = bin_consensus\
         .select(["motif", "mod_position", "mod_type", "n_mod_bin", "n_nomod_bin"])\
@@ -131,7 +142,7 @@ def get_motifs(motifs_scored, bin_consensus, occurence_cutoff=0.9, min_motif_obs
             motif_mod = pl.col("motif") + "_" + pl.col("mod_position").cast(pl.String) + "_" + pl.col("mod_type"),
             n_motifs = pl.col("n_mod_bin") + pl.col("n_nomod_bin")
         )\
-        .filter(pl.col("n_motifs") >= 700)\
+        .filter(pl.col("n_motifs") >= min_motif_observations_bin)\
         .get_column("motif_mod")\
         .unique()
     
@@ -148,7 +159,7 @@ def get_motifs(motifs_scored, bin_consensus, occurence_cutoff=0.9, min_motif_obs
     total_contigs_in_motifs = motifs_scored.unique(subset=["contig"]).shape[0]
     
     motif_occurences_in_contigs = motifs_scored\
-        .filter(pl.col("n_motifs") >= min_motif_observations)\
+        .filter(pl.col("n_motifs") >= min_motif_observations_contig)\
         .group_by(["motif", "mod_position", "mod_type"])\
         .agg(
             pl.count("contig").alias("motif_distinct_contigs")
@@ -330,8 +341,8 @@ def create_methylation_matrix(methylation_features, motifs=None, min_motif_obser
         .fill_null(0)
 
 
-        new_columns=sort_columns(matrix)
-        matrix = matrix.select(new_columns)
+    new_columns=sort_columns(matrix.columns)
+    matrix = matrix.select(new_columns)
     
     return matrix
 
@@ -406,17 +417,18 @@ def generate_methylation_features(logger, args):
     
     # Get lenths of the contigs
     contig_lengths = {contig: len(sequence) for contig, sequence in contig_sequences.items()}
-    
+
     # Get the unique motifs
     motifs = get_motifs(
         motifs_scored = motifs_scored, 
         bin_consensus = bin_consensus,
         occurence_cutoff = args.motif_occurence_cutoff,
-        min_motif_observations=args.min_motif_observations
+        min_motif_observations_contig=args.min_motif_observations_contig,
+        min_motif_observations_bin=args.min_motif_observations_bin
     )
 
     if len(motifs) == 0:
-        logger.error(f"No motifs found with --motif-occurence-cutoff {args.motif_occurence_cutoff}, --min-motif-observations {args.min_motif_observations}")
+        logger.error(f"No motifs found with current settings")
         sys.exit(1)
     number_of_motifs = sum([len(motifs[mod_type]) for mod_type in motifs])
     logger.info(f"Motifs found (#{number_of_motifs}): {motifs}")
@@ -427,7 +439,7 @@ def generate_methylation_features(logger, args):
     
     data_split_methylation_matrix = create_methylation_matrix(
         methylation_features = contig_split_methylation,
-        min_motif_observations = args.min_motif_observations
+        min_motif_observations = args.min_motif_observations_contig
     )
     
     # extract motfis from the data
@@ -453,7 +465,7 @@ def generate_methylation_features(logger, args):
     motifs_scored_matrix = create_methylation_matrix(
         methylation_features = motifs_scored, 
         motifs = motifs_in_contig_split,
-        min_motif_observations = args.min_motif_observations
+        min_motif_observations = args.min_motif_observations_contig
     ).select(data_split_methylation_matrix.columns)
     
     data = data\
