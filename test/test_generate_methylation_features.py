@@ -64,24 +64,6 @@ def data():
     }
 
 
-# def test_get_motifs(data):
-#     """
-#     Test get_motifs function at different cutoffs.
-#     """
-#     bin_consensus = data["bin_consensus"]
-#     data = data["motifs_scored"]
-    
-#     motifs_all = get_motifs(data, bin_consensus, occurence_cutoff=0)
-#     motifs_all_len = len([motif for motifs in motifs_all.values() for motif in motifs])
-    
-#     motifs_90 = get_motifs(data, bin_consensus, occurence_cutoff=0.9)
-#     motifs_90_len = len([motif for motifs in motifs_90.values() for motif in motifs])
-    
-#     assert motifs_all_len > motifs_90_len, "All motifs should be greater than 90% cutoff."
-#     assert motifs_all_len == 17, "All motifs should be 17."
-    
-
-
 
 def test_find_read_methylation(data):
     contigs = data["contigs"]

@@ -678,9 +678,9 @@ def check_motif(column):
         bool: True if the column is a motif, False otherwise.
     """
     try:
-        motif, mod_pos = column.split('_')
+        _, _, motif, mod_pos = column.split('_') # n_nomod_GATC_a-1
         mod, pos = mod_pos.split('-')
-        if mod in ["m", "a", "c", "21839"] and int(pos) in range(0, 20):
+        if mod in ["m", "a", "21839"] and int(pos) in range(0, 20):
             return True
     except:
         return False

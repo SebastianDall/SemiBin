@@ -106,7 +106,6 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
         rev_indexes = find_motif_indexes(contig.seq, motif.reverse_compliment())
 
         p_fwd = pileup.filter(pl.col("strand") == "+", pl.col("motif_type") == mod_type, pl.col("start").is_in(fwd_indexes))
-        
         p_rev = pileup.filter(pl.col("strand") == "-", pl.col("motif_type") == mod_type, pl.col("start").is_in(rev_indexes))
 
         p_con = pl.concat([p_fwd, p_rev])
@@ -238,14 +237,22 @@ def create_methylation_matrix(methylation_features, min_valid_read_coverage = 8)
         .filter(pl.col("sum_N_valid_cov") >= min_valid_read_coverage)
     
     
-    matrix = matrix.select(["contig", "motif_mod", "mean"])\
+    matrix = matrix.select(["contig", "motif_mod", "n_mod", "n_nomod"])\
         .pivot(
             index = "contig",
             columns = "motif_mod",
-            values = "mean",
-            aggregate_function = "first"
+            values = pl.selectors.starts_with("n_"),
+            aggregate_function = None,
+            maintain_order = True
         )\
-        .fill_null(0.0)
+        .rename(
+            lambda column_name: column_name.replace("motif_mod_", "")
+        )\
+        .fill_null(0)
+
+
+    new_columns=sort_columns(matrix.columns)
+    matrix = matrix.select(new_columns)
     
     return matrix
 
@@ -297,7 +304,7 @@ def generate_methylation_features(logger, args):
             motif_mod = pl.col("motif") + "_" + pl.col("mod_position").cast(pl.String) + "_" + pl.col("mod_type"),
             n_motifs = pl.col("n_mod_bin") + pl.col("n_nomod_bin")
         )\
-        .filter(pl.col("n_motifs") >= args.min_motif_observations)\
+        .filter(pl.col("n_motifs") >= args.min_motif_observations_bin)\
         .unique(["motif_mod"])
 
     if len(motifs) == 0:
@@ -343,7 +350,7 @@ def generate_methylation_features(logger, args):
     data_methylation_matrix = create_methylation_matrix(
         methylation_features=contig_methylation,
         min_valid_read_coverage=args.min_valid_read_coverage
-    )
+    ).select(data_split_methylation_matrix.columns)
     
     data = data\
         .join(
