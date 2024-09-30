@@ -9,9 +9,6 @@ import os
 import sys
 import gzip
 from Bio import SeqIO
-import cProfile
-import pstats
-import argparse
 import re
 
 
@@ -307,7 +304,7 @@ def generate_methylation_features(logger, args):
         logger.error(f"No motifs found")
         sys.exit(1)
     
-    motif_list = [(Motif(row[0], row[1]), row[2])for row in motifs.unique(["motif", "mod_position"]).iter_rows()]
+    motif_list = [(Motif(row[0], row[1]), row[2])for row in motifs.unique(["motif_mod"]).iter_rows()]
     
     number_of_motifs = len(motif_list)
     logger.info(f"Motifs found (#{number_of_motifs}): {motif_list}")
