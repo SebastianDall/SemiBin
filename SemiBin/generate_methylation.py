@@ -114,7 +114,7 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
 
         p_read_meth_counts = p_con\
             .with_columns(
-                motif_read_mean = pl.col("N_modified") / pl.col("N_valid_coverage")
+                motif_read_mean = pl.col("N_modified") / pl.col("N_valid_cov")
             )\
             .group_by("contig", "mod_type")\
             .agg([
@@ -145,7 +145,7 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
 
             p_split_read_meth_counts = p_split_con\
             .with_columns(
-                motif_read_mean = pl.col("N_modified") / pl.col("N_valid_coverage")
+                motif_read_mean = pl.col("N_modified") / pl.col("N_valid_cov")
             )\
             .group_by("contig", "mod_type")\
             .agg([
@@ -172,20 +172,20 @@ def worker_function(task, motifs, counter, lock):
     """
     pileup, contig, perform_split = task
     
-    try:
-        contig_meth, contig_split_meth = find_motif_read_methylation(
-            contig = contig,
-            pileup = pileup,
-            motifs = motifs,
-            perform_split = perform_split
-        )
-        with lock:
-          counter.value += 1
-        return contig_meth, contig_split_meth
-    except:
-        with lock:
-          counter.value += 1
-        return None, None
+    # try:
+    contig_meth, contig_split_meth = find_motif_read_methylation(
+        contig = contig,
+        pileup = pileup,
+        motifs = motifs,
+        perform_split = perform_split
+    )
+    with lock:
+      counter.value += 1
+    return contig_meth, contig_split_meth
+    # except:
+    #     with lock:
+    #       counter.value += 1
+    #     return None, None
 
 
 def find_read_methylation(contigs, pileup, assembly, motifs, logger, threads=1):
@@ -233,6 +233,12 @@ def find_read_methylation(contigs, pileup, assembly, motifs, logger, threads=1):
       
     return contig_meth_results, contig_split_meth_results
     
+def sort_columns(cols):
+    mod_columns = sorted([col for col in cols if "median" in col], key=lambda x: x.split("_")[-2:])
+    nomod_columns = sorted([col for col in cols if "motif_present" in col], key=lambda x: x.split("_")[-2:])
+    # Interleave the mod and nomod columns
+    sorted_columns = [val for pair in zip(mod_columns, nomod_columns) for val in pair]
+    return ["contig"] + sorted_columns  # Keep 'contig' as the first column
 
 def create_methylation_matrix(methylation_features):
     """
@@ -250,7 +256,7 @@ def create_methylation_matrix(methylation_features):
         )
     
     
-    matrix = matrix.select(["contig", "motif_mod", "n_mod", "n_nomod"])\
+    matrix = matrix.select(["contig", "motif_mod", "median", "motif_present"])\
         .pivot(
             index = "contig",
             columns = "motif_mod",
@@ -374,6 +380,15 @@ def generate_methylation_features(logger, args):
         .fill_nan(0.0)\
         .fill_null(0.0)
  
+    assert data_split_methylation_matrix.columns == data_methylation_matrix.columns, "methylation columns does not match between data_split_methylation_matrix and data_methylation_matrix"
+
+    data_split_cols = data_split.columns
+    data_cols = data.columns
+
+    data_cols_filtered = [col for col in data_cols if not "mean" in col]
+    data_cols_filtered = [col for col in data_cols_filtered if not "var" in col]
+    assert data_split_cols == data_cols_filtered, "data.csv and data_split.csv columns does not match after methylation addition"
+    
     try:
         logger.info("Writing to data and data_split files...")
         data_split.write_csv(os.path.join(args.output, "data_split.csv"), separator=",", quote_style='never') 

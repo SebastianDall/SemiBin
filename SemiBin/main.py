@@ -345,7 +345,6 @@ def parse_args(args, is_semibin2, with_methylation):
                 p.add_argument("--min-motif-methylation", help="Minimum motif methylation degree (Default: 0.5).", default=0.5, type=int)
                 p.add_argument("--min-valid-read-coverage", help="Minimum number of valid read observations for a motif in a contig (Default: 8).", default=8, type=int)
                 p.add_argument("--min-motif-observations-bin", help="Minimum motif coverage in bin-motifs", default=1000, type=int)
->>>>>>> zero-problem-split-mean-column
                 
 
     for p in [single_easy_bin,
