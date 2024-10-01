@@ -118,13 +118,13 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
             )\
             .group_by("contig", "mod_type")\
             .agg([
-                 pl.col("motif_read_mean").median().alias("median"),
-                 pl.col("N_valid_cov").sum().alias("sum_N_valid_cov")
+                 pl.col("motif_read_mean").median().alias("median")
              ]).with_columns(
                 pl.lit(motif.string).alias("motif"),
                 pl.lit(motif.mod_position).alias("mod_position"),
                 pl.lit(1).alias("motif_present")
-            )
+            )\
+            .drop("motif_read_med")
 
         data_read_meth= pl.concat([data_read_meth, p_read_meth_counts])
 
@@ -149,13 +149,14 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
             )\
             .group_by("contig", "mod_type")\
             .agg([
-                 pl.col("motif_read_mean").median().alias("median"),
-                 pl.col("N_valid_cov").sum().alias("sum_N_valid_cov")
+                 pl.col("motif_read_mean").median().alias("median")
              ]).with_columns(
                 pl.lit(motif.string).alias("motif"),
                 pl.lit(motif.mod_position).alias("mod_position"),
                 pl.lit(1).alias("motif_present")
-            )
+            )\
+            .drop("motif_read_med")
+            
             data_split_read_meth= pl.concat([data_split_read_meth, p_split_read_meth_counts])
 
     return data_read_meth, data_split_read_meth
@@ -233,12 +234,12 @@ def find_read_methylation(contigs, pileup, assembly, motifs, logger, threads=1):
     return contig_meth_results, contig_split_meth_results
     
 
-def create_methylation_matrix(methylation_features, min_valid_read_coverage = 8):
+def create_methylation_matrix(methylation_features):
     """
     Creates a feature matrix with methylation from motifs-scored or methylation features.
     """
     # check if the methylation features have the required columns
-    required_columns = ["contig", "motif", "mod_type",  "mod_position", "sum_N_valid_cov", "sum_N_modified"]
+    required_columns = ["contig", "motif", "mod_type",  "mod_position", "median", "motif_present"]
     if not all(col in methylation_features.columns for col in required_columns):
         raise ValueError(f"Missing required columns in methylation features. Required columns: {', '.join(required_columns)}")
     
@@ -246,15 +247,14 @@ def create_methylation_matrix(methylation_features, min_valid_read_coverage = 8)
     matrix = methylation_features\
         .with_columns(
             motif_mod = pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String)
-        )\
-        .filter(pl.col("sum_N_valid_cov") >= min_valid_read_coverage)
+        )
     
     
     matrix = matrix.select(["contig", "motif_mod", "n_mod", "n_nomod"])\
         .pivot(
             index = "contig",
             columns = "motif_mod",
-            values = pl.selectors.starts_with("n_"),
+            values = ["median", "motif_present"],
             aggregate_function = None,
             maintain_order = True
         )\
@@ -346,8 +346,7 @@ def generate_methylation_features(logger, args):
     contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process, logger = logger)
     
     data_split_methylation_matrix = create_methylation_matrix(
-        methylation_features = contig_split_methylation,
-        min_valid_read_coverage = args.min_valid_read_coverage
+        methylation_features = contig_split_methylation
     )
     
     data_split = data_split\
@@ -361,8 +360,7 @@ def generate_methylation_features(logger, args):
         .fill_null(0.0)
         
     data_methylation_matrix = create_methylation_matrix(
-        methylation_features=contig_methylation,
-        min_valid_read_coverage=args.min_valid_read_coverage
+        methylation_features=contig_methylation
     ).select(data_split_methylation_matrix.columns)
     
     data = data\
