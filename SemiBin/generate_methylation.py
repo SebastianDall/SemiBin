@@ -79,7 +79,7 @@ def load_data(args, logger):
     """Loads data"""
     # try:
     pileup = pl.scan_csv(args.pileup, separator = "\t", has_header = False, new_columns = [
-                             "contig", "start", "end", "motif_type", "score", "strand", "start2", "end2", "color", "N_valid_cov", "percent_modified", "N_modified", "N_canonical", "N_other_mod", "N_delete", "N_fail", "N_diff", "N_nocall"
+                             "contig", "start", "end", "mod_type", "score", "strand", "start2", "end2", "color", "N_valid_cov", "percent_modified", "N_modified", "N_canonical", "N_other_mod", "N_delete", "N_fail", "N_diff", "N_nocall"
                          ])
     bin_consensus = pl.read_csv(args.bin_motifs, separator="\t")
     
@@ -105,18 +105,25 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
         fwd_indexes = find_motif_indexes(contig.seq, motif)
         rev_indexes = find_motif_indexes(contig.seq, motif.reverse_compliment())
 
-        p_fwd = pileup.filter(pl.col("strand") == "+", pl.col("motif_type") == mod_type, pl.col("start").is_in(fwd_indexes))
-        p_rev = pileup.filter(pl.col("strand") == "-", pl.col("motif_type") == mod_type, pl.col("start").is_in(rev_indexes))
+        p_fwd = pileup.filter(pl.col("strand") == "+", pl.col("mod_type") == mod_type, pl.col("start").is_in(fwd_indexes))
+        p_rev = pileup.filter(pl.col("strand") == "-", pl.col("mod_type") == mod_type, pl.col("start").is_in(rev_indexes))
 
         p_con = pl.concat([p_fwd, p_rev])
+        if p_con.shape[0] == 0:
+            continue
 
-        p_read_meth_counts = p_con.group_by("contig", "motif_type")\
+        p_read_meth_counts = p_con\
+            .with_columns(
+                motif_read_mean = pl.col("N_modified") / pl.col("N_valid_coverage")
+            )\
+            .group_by("contig", "mod_type")\
             .agg([
-                 pl.col("N_modified").sum().alias("sum_N_modified"),
+                 pl.col("motif_read_mean").median().alias("median"),
                  pl.col("N_valid_cov").sum().alias("sum_N_valid_cov")
              ]).with_columns(
                 pl.lit(motif.string).alias("motif"),
-                pl.lit(motif.mod_position).alias("mod_position")
+                pl.lit(motif.mod_position).alias("mod_position"),
+                pl.lit(1).alias("motif_present")
             )
 
         data_read_meth= pl.concat([data_read_meth, p_read_meth_counts])
@@ -133,15 +140,22 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
             )
 
             p_split_con = pl.concat([p_fwd_split, p_rev_split])
+            if p_split_con.shape[0] == 0:
+                continue
 
-            p_split_read_meth_counts = p_split_con.group_by("contig", "motif_type")\
-                .agg([
-                     pl.col("N_modified").sum().alias("sum_N_modified"),
-                     pl.col("N_valid_cov").sum().alias("sum_N_valid_cov")
-                 ]).with_columns(
-                    pl.lit(motif.string).alias("motif"),
-                    pl.lit(motif.mod_position).alias("mod_position")
-                )
+            p_split_read_meth_counts = p_split_con\
+            .with_columns(
+                motif_read_mean = pl.col("N_modified") / pl.col("N_valid_coverage")
+            )\
+            .group_by("contig", "mod_type")\
+            .agg([
+                 pl.col("motif_read_mean").median().alias("median"),
+                 pl.col("N_valid_cov").sum().alias("sum_N_valid_cov")
+             ]).with_columns(
+                pl.lit(motif.string).alias("motif"),
+                pl.lit(motif.mod_position).alias("mod_position"),
+                pl.lit(1).alias("motif_present")
+            )
             data_split_read_meth= pl.concat([data_split_read_meth, p_split_read_meth_counts])
 
     return data_read_meth, data_split_read_meth
@@ -224,15 +238,14 @@ def create_methylation_matrix(methylation_features, min_valid_read_coverage = 8)
     Creates a feature matrix with methylation from motifs-scored or methylation features.
     """
     # check if the methylation features have the required columns
-    required_columns = ["contig", "motif", "motif_type",  "mod_position", "sum_N_valid_cov", "sum_N_modified"]
+    required_columns = ["contig", "motif", "mod_type",  "mod_position", "sum_N_valid_cov", "sum_N_modified"]
     if not all(col in methylation_features.columns for col in required_columns):
         raise ValueError(f"Missing required columns in methylation features. Required columns: {', '.join(required_columns)}")
     
     # Calculate mean methylation for each motif
     matrix = methylation_features\
         .with_columns(
-            mean = pl.col("sum_N_modified") / pl.col("sum_N_valid_cov"),
-            motif_mod = pl.col("motif") + "_" + pl.col("motif_type") + "-" + pl.col("mod_position").cast(pl.String)
+            motif_mod = pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String)
         )\
         .filter(pl.col("sum_N_valid_cov") >= min_valid_read_coverage)
     
@@ -326,7 +339,7 @@ def generate_methylation_features(logger, args):
         else:
             contigs[c] = False
 
-    pileup = pileup.select(["contig", "start", "strand","motif_type", "N_modified", "N_valid_cov"]).collect()
+    pileup = pileup.select(["contig", "start", "strand","mod_type", "N_modified", "N_valid_cov"]).collect()
     
     # Create methylation matrix for contig_splits
     logger.info(f"Calculating methylation pattern for each contig split using {args.num_process} threads.")
