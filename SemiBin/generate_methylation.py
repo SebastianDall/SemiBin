@@ -339,7 +339,8 @@ def generate_methylation_features(logger, args):
         else:
             contigs[c] = False
 
-    pileup = pileup.select(["contig", "start", "strand","mod_type", "N_modified", "N_valid_cov"]).collect()
+    pileup = pileup.filter(pl.col("N_valid_cov") >= args.min_valid_read_coverage)\
+        .select(["contig", "start", "strand","mod_type", "N_modified", "N_valid_cov"]).collect()
     
     # Create methylation matrix for contig_splits
     logger.info(f"Calculating methylation pattern for each contig split using {args.num_process} threads.")
