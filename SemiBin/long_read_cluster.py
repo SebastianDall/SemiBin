@@ -69,14 +69,20 @@ def cluster_long_read(logger, model, data, device, is_combined,
     import pandas as pd
     from .utils import norm_abundance
     contig_list = data.index.tolist()
+
+    if len(features_data['motif_present']) > 0:
+        train_data_motif_present = data.values[:, features_data['motif_present']]
+    
     if not is_combined:
         train_data_input = data.values[:, features_data["kmer"] + features_data["motif"]]
-        train_data_input, _ = normalize_kmer_motif_features(train_data_input, train_data_input)
+        train_data_input, _ = normalize_kmer_motif_features(train_data_input, train_data_input, features_data)
+        train_data_input = np.concantenate((train_data_input, train_data_motif_present), axis = 1)
     else:
         train_data_input = data.values
         if norm_abundance(train_data_input, features_data):
             train_data_kmer = train_data_input[:, features_data["kmer"] + features_data["motif"]]
-            train_data_kmer, _ = normalize_kmer_motif_features(train_data_kmer, train_data_kmer)
+            train_data_kmer, _ = normalize_kmer_motif_features(train_data_kmer, train_data_kmer, features_data)
+            train_data_kmer = np.concatenate((train_data_kmer, train_data_motif_present), axis = 1)
             
             train_data_depth = train_data_input[:, features_data["depth"]]
             from sklearn.preprocessing import normalize
