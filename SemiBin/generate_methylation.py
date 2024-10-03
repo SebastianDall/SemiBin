@@ -159,6 +159,11 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
             
             data_split_read_meth= pl.concat([data_split_read_meth, p_split_read_meth_counts])
 
+    if data_read_meth.shape == (0,0):
+        data_read_meth = None
+
+    if perform_split and data_split_read_meth.shape == (0,0):
+        data_split_read_meth = None
     return data_read_meth, data_split_read_meth
 
         
