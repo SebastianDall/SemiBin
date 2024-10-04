@@ -118,7 +118,8 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
             )\
             .group_by("contig", "mod_type")\
             .agg([
-                 pl.col("motif_read_mean").median().alias("median")
+                 pl.col("motif_read_mean").median().alias("median"),
+                 pl.col("contig").count().alias("N_motif_obs")
              ]).with_columns(
                 pl.lit(motif.string).alias("motif"),
                 pl.lit(motif.mod_position).alias("mod_position"),
@@ -149,8 +150,9 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
             )\
             .group_by("contig", "mod_type")\
             .agg([
-                 pl.col("motif_read_mean").median().alias("median")
-             ]).with_columns(
+                 pl.col("motif_read_mean").median().alias("median"),
+                 pl.col("contig").count().alias("N_motif_obs")
+            ]).with_columns(
                 pl.lit(motif.string).alias("motif"),
                 pl.lit(motif.mod_position).alias("mod_position"),
                 pl.lit(1).alias("motif_present")
@@ -356,6 +358,10 @@ def generate_methylation_features(logger, args):
     # Create methylation matrix for contig_splits
     logger.info(f"Calculating methylation pattern for each contig split using {args.num_process} threads.")
     contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process, logger = logger)
+
+    # Methylation number is median of mean methylation. Filtering is applied for too few motif observations.
+    contig_methylation = contig_methylation.filter(pl.col("N_motif_obs") >= args.min_motif_obs_contig)
+    contig_split_methylation = contig_split_methylation.filter(pl.col("N_motif_obs") >= args.min_motif_obs_contig)
     
     data_split_methylation_matrix = create_methylation_matrix(
         methylation_features = contig_split_methylation
