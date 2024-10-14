@@ -124,9 +124,7 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
                 pl.lit(motif.string).alias("motif"),
                 pl.lit(motif.mod_position).alias("mod_position"),
                 pl.lit(1).alias("motif_present")
-            )\
-            .drop("motif_read_med")
-
+            )
         data_read_meth= pl.concat([data_read_meth, p_read_meth_counts])
 
 
@@ -156,9 +154,7 @@ def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
                 pl.lit(motif.string).alias("motif"),
                 pl.lit(motif.mod_position).alias("mod_position"),
                 pl.lit(1).alias("motif_present")
-            )\
-            .drop("motif_read_med")
-            
+            )            
             data_split_read_meth= pl.concat([data_split_read_meth, p_split_read_meth_counts])
 
     if data_read_meth.shape == (0,0):

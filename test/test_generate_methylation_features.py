@@ -14,6 +14,7 @@ class SetupArgs:
         self.data_split = "test/methylation_data/data_split.csv"
         self.num_process = 1
         self.min_motif_observations_bin = 400
+        self.min_motif_obs_contig = 1
         self.min_motif_methylation = 0.5
         self.min_valid_read_coverage= 1
         self.output = "test_output"
@@ -92,6 +93,7 @@ def test_find_read_methylation(data):
     
     
     assert contig_split_methylation.columns == contig_methylation.columns
+    assert sum(contig_split_methylation.get_column("N_motif_obs")) == sum(contig_methylation.get_column("N_motif_obs"))
 
 
 def test_find_motif_indices():
@@ -132,30 +134,7 @@ def test_find_motif_read_methylation(data):
     print(methylation)
     assert methylation.filter(pl.col("motif") == "CCWGG").shape[0] == 0
     assert methylation.filter(pl.col("motif") == "GATC").get_column("median")[0] == 0.625
-    assert methylation.shape == (2,6)
-# def test_no_na(data):
-#     contigs = data["contigs"]
-#     pileup = data["pileup"]
-#     motif_list = data["motif_list"]
-#     assembly = data["assembly"]
-#     args = SetupArgs()
-    
-#     contigs["contig_20"] = True
-#     p = pl.DataFrame({
-#         "contig"
-#     })
-    
-    
-    
-#     contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process)
-
-    
-#     contig_split_methylation = contig_split_methylation\
-#         .with_columns(
-#             motif = pl.col("motif") + "_" + pl.col("motif_type") + "-" + pl.col("mod_position").cast(pl.String)
-#         )
-        
-        
+    assert methylation.shape == (2,7)
 
 def test_find_motif_indexes(data):
     assembly = data["assembly"]
@@ -163,7 +142,6 @@ def test_find_motif_indexes(data):
     fwd_indexes = find_motif_indexes(assembly["contig_10"].seq, motif)
 
     assert len(fwd_indexes) == assembly["contig_10"].count("GATC")
-    
 
 class TestCheckFilesExist(unittest.TestCase):
 
