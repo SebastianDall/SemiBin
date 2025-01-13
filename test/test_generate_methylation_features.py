@@ -1,14 +1,20 @@
 import pytest
+import polars as pl
+import pandas as pd
 from SemiBin.generate_methylation import *
 import unittest
 from unittest.mock import patch, MagicMock
 import os
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio import SeqIO
+
 
 
 class SetupArgs:
     def __init__(self):
-        self.pileup = "test/methylation_data/pileup.bed"
-        self.contig_fasta = "test/methylation_data/assembly.fasta"
+        self.pileup = "test/methylation_data/geobacillus-plasmids.pileup.bed"
+        self.contig_fasta = "test/methylation_data/geobacillus-plasmids.assembly.fasta"
         self.bin_motifs = "test/methylation_data/bin-motifs.tsv"
         self.data = "test/methylation_data/data.csv"
         self.data_split = "test/methylation_data/data_split.csv"
@@ -17,7 +23,7 @@ class SetupArgs:
         self.min_motif_obs_contig = 1
         self.min_motif_methylation = 0.5
         self.min_valid_read_coverage= 1
-        self.output = "test_output"
+        self.output = "test/methylation_data/test_output"
 
 @pytest.fixture
 def data():
@@ -42,7 +48,7 @@ def data():
         logger.error(f"No motifs found")
         sys.exit(1)
     
-    motif_list = [(Motif(row[0], row[1]), row[2])for row in motifs.unique(["motif", "mod_position"]).iter_rows()]
+    motif_list = [(Motif(row[0], row[1]), row[2])for row in motifs.unique(["motif", "mod_position", "mod_type"]).iter_rows()]
     contigs_in_split = data_split.select("contig").to_pandas()
     contigs_in_split = contigs_in_split["contig"].str.rsplit("_",n=1).str[0].unique()
 
@@ -65,83 +71,106 @@ def data():
     }
 
 
-
-def test_find_read_methylation(data):
-    contigs = data["contigs"]
-    pileup = data["pileup"]
-    motif_list = data["motif_list"]
-    assembly = data["assembly"]
-    args = SetupArgs()
-    
+def test_generate_methylation_features(data):
     logger = MagicMock()
-    pileup = pileup.collect()
-    contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, logger, threads=args.num_process)
+    args = SetupArgs()
 
+    data_before = pl.read_csv(args.data)
+    generate_methylation_features(logger, args)
+
+    assert os.path.exists(os.path.join(args.output, "data.csv"))
+    assert os.path.exists(os.path.join(args.output, "contig_methylation.tsv"))
+
+    data_after = pl.read_csv(os.path.join(args.output, "data.csv"))
+    assert len(data_before.columns) != len(data_after.columns)
     
-    contig_split_methylation = contig_split_methylation\
-        .with_columns(
-            motif = pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String)
-        )
-        
-        
-    contig_methylation = contig_methylation\
-        .with_columns(
-            motif = pl.col("motif") + "_" + pl.col("mod_type") + "-" + pl.col("mod_position").cast(pl.String)
-        )
-    
-    print(contig_split_methylation)
-    
-    
-    assert contig_split_methylation.columns == contig_methylation.columns
-    assert sum(contig_split_methylation.get_column("N_motif_obs")) == sum(contig_methylation.get_column("N_motif_obs"))
+    os.remove(os.path.join(args.output, "data_split.csv"))
+    os.remove(os.path.join(args.output, "data.csv"))
+    os.remove(os.path.join(args.output, "contig_methylation.tsv"))
+    os.remove(os.path.join(args.output, "contig_split.fasta"))
 
 
-def test_find_motif_indices():
-    class Contig:
-        def __init__(self):
-           self.seq = "TGGACGATCCCGATC"
+def test_split_contigs(data):
+    args = data["args"]
+    lengths = get_split_contig_lengths(data["assembly"], ["contig_2", "contig_3"])
 
-    contig = Contig()
-    motif = Motif("GATC", 1)
-    fwd_indixes = find_motif_indexes(contig.seq, motif)
+    create_assembly_with_split_contigs(data["assembly"], lengths, os.path.join(args.output, "plasmid_split.fasta"))
 
-    assert list(fwd_indixes) == [6, 12]
+    create_split_pileup(data["pileup"], lengths, os.path.join(args.output, "plasmid_split.bed"))
 
-def test_find_motif_read_methylation(data):
-    class Contig:
-        def __init__(self):
-           self.seq = "TGGACGATCCCGATC"
-
-    contig = Contig()
-
-    pileup = pl.DataFrame({
-                              "contig": ["contig_10"] * 5,
-                              "strand": ["+", "+", "+", "-", "-"],
-                              "mod_type": ["a", "m", "a", "a", "a"],
-                              "start": [6, 8, 12, 7, 13],
-                              "N_modified": [20, 20, 5, 20,  5],
-                              "N_valid_cov": [20, 20, 20, 20, 20]
-                          })    
-
-    motifs = [(Motif("GATC", 1), "a"), (Motif("TCCCG", 1), "m"), (Motif("CCWGG", 0), "m")]
-    print(motifs[0][0])
-    methylation, _ = find_motif_read_methylation(
-        contig = contig,
-        pileup = pileup,
-        motifs = motifs
+    run_epimetheus(
+        os.path.join(args.output, "plasmid_split.bed"),
+        os.path.join(args.output, "plasmid_split.fasta"),
+        ["GATC_a_1", "GATC_m_3"],
+        min_valid_read_coverage = 1,
+        threads = 1,
+        output = os.path.join(args.output, "contig_split_methylation.tsv")        
     )
 
-    print(methylation)
-    assert methylation.filter(pl.col("motif") == "CCWGG").shape[0] == 0
-    assert methylation.filter(pl.col("motif") == "GATC").get_column("median")[0] == 0.625
-    assert methylation.shape == (2,7)
+    expected_output = pd.read_csv(
+        os.path.join("test/methylation_data/expected_contig_methylation.tsv"),
+        sep = "\t"
+    )
 
-def test_find_motif_indexes(data):
-    assembly = data["assembly"]
-    motif = Motif("GATC", 1)
-    fwd_indexes = find_motif_indexes(assembly["contig_10"].seq, motif)
+    current_output = pd.read_csv(
+        os.path.join(args.output, "contig_split_methylation.tsv"),
+        sep = "\t"
+    )
 
-    assert len(fwd_indexes) == assembly["contig_10"].count("GATC")
+    pd.testing.assert_frame_equal(expected_output, current_output)
+
+    os.remove(os.path.join(args.output, "plasmid_split.bed"))
+    os.remove(os.path.join(args.output, "plasmid_split.fasta"))
+    os.remove(os.path.join(args.output, "pileup_split.bed"))
+    os.remove(os.path.join(args.output, "contig_split_methylation.tsv"))
+
+
+
+
+        
+class TestCreateAssemblyWithSplitContigs(unittest.TestCase):
+    def setUp(self):
+        # Set up a mock assembly with test contigs
+        self.assembly = {
+            "contig_1": SeqRecord(Seq("ATGCGTACGTAGCTAGCTAG"), id="contig_1"),
+            "contig_2": SeqRecord(Seq("TGCATGCTAGCTGACTGACT"), id="contig_2")
+        }
+        
+        # Define contigs to split
+        self.split_contigs = ["contig_1", "contig_2"]
+
+        # Output path for the test
+        self.output_path = "test_split_contigs.fasta"
+
+    def test_create_assembly_with_split_contigs(self):
+        # Call the function to create split contigs
+        contig_lengths = get_split_contig_lengths(self.assembly, self.split_contigs)
+        create_assembly_with_split_contigs(self.assembly, contig_lengths, self.output_path)
+
+        # Read the output file and check its contents
+        with open(self.output_path, "r") as output_handle:
+            split_records = list(SeqIO.parse(output_handle, "fasta"))
+        
+        # Expected results: each contig should be split into two parts
+        expected_sequences = [
+            ("contig_1_1", "ATGCGTACGT"),
+            ("contig_1_2", "AGCTAGCTAG"),
+            ("contig_2_1", "TGCATGCTAG"),
+            ("contig_2_2", "CTGACTGACT")
+        ]
+        
+        # Check that we have the expected number of records
+        self.assertEqual(len(split_records), len(expected_sequences))
+
+        # Check that each split record has the correct ID and sequence
+        for record, (expected_id, expected_seq) in zip(split_records, expected_sequences):
+            self.assertEqual(record.id, expected_id)
+            self.assertEqual(str(record.seq), expected_seq)
+
+    def tearDown(self):
+        # Clean up the test output file
+        if os.path.exists(self.output_path):
+            os.remove(self.output_path)
 
 class TestCheckFilesExist(unittest.TestCase):
 
@@ -195,21 +224,23 @@ class TestCheckFilesExist(unittest.TestCase):
 
 
 
-def test_generate_methylation_features():
-    args = SetupArgs()
+# def test_generate_methylation_features():
+#     args = SetupArgs()
     
-    # create a mock logger
-    logger = MagicMock()
+#     # create a mock logger
+#     logger = MagicMock()
     
-    generate_methylation_features(logger, args)
+#     generate_methylation_features(logger, args)
     
-    assert os.path.exists(os.path.join(args.output, "data_split.csv")), "data_split.csv should be created."
-    assert os.path.exists(os.path.join(args.output, "data.csv")), "data.csv should be created."
+#     assert os.path.exists(os.path.join(args.output, "data_split.csv")), "data_split.csv should be created."
+#     assert os.path.exists(os.path.join(args.output, "data.csv")), "data.csv should be created."
     
-    # Cleanup
-    os.remove(os.path.join(args.output, "data_split.csv"))
-    os.remove(os.path.join(args.output, "data.csv"))
-    os.rmdir(args.output)
+#     # Cleanup
+#     os.remove(os.path.join(args.output, "data_split.csv"))
+#     os.remove(os.path.join(args.output, "data.csv"))
+#     os.remove(os.path.join(args.output, "contig_methylation.tsv"))
+#     os.remove(os.path.join(args.output, "contig_split.fasta"))
+#     os.rmdir(args.output)
 
 
 
@@ -254,8 +285,6 @@ class TestCheckFilesAndLog(unittest.TestCase):
         
         # Ensure the correct error message was logged
         logger.info.assert_called_with("Using default data and data_split files. Checking output directory.")
-
-
 
 
 if __name__ == '__main__':

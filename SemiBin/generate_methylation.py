@@ -5,28 +5,18 @@ from multiprocessing import get_context
 import multiprocessing
 from nanomotif.parallel import update_progress_bar
 from nanomotif.candidate import Motif
+from pymethylation_utils.utils import run_epimetheus
 import os
 import sys
 import gzip
 from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 import re
 
 
-# os.environ['POLARS_MAX_THREADS'] = '1'
+# os.environ['POLARS_MAX_THREADS'] = str(args.num_process)
 import polars as pl
-
-# IUPAC codes dictionary for sequence pattern matching
-iupac_dict = {
-    "A": "A", "T": "T", "C": "C", "G": "G",
-    "R": "[AG]", "Y": "[CT]", 
-    "S": "[GC]", "W": "[AT]", 
-    "K": "[GT]", "M": "[AC]",
-    "B": "[CGT]",
-    "D": "[AGT]",
-    "H": "[ACT]",
-    "V": "[ACG]",
-    "N": "[ATCG]"
-}
 
 
 def read_fasta(path):
@@ -50,11 +40,71 @@ def read_fasta(path):
             contigs = SeqIO.to_dict(SeqIO.parse(handle, "fasta"))
     return contigs
 
-def find_motif_indexes(contig, motif):
-    # Find the indices of the motif in the sequence
-    regex_motif = re.compile(motif.from_iupac())
-    return np.array([m.start() for m in re.finditer(regex_motif, str(contig))]) + motif.mod_position
+def get_split_contig_lengths(assembly, split_contigs):
+    contig_lengths = {}
+    for c in split_contigs:
+        contig = assembly[c]
+        contig_len = len(contig.seq)
+        contig_lengths[contig.id] = contig_len
 
+    return contig_lengths
+    
+
+def create_assembly_with_split_contigs(assembly, contig_lengths, output):
+    split_records = []
+    for c in contig_lengths.keys():
+        contig = assembly[c]
+
+        contig_half = contig_lengths[c] // 2
+
+        s1 = contig.seq[:contig_half]
+        s2 = contig.seq[contig_half:]
+
+        r1 = SeqRecord(
+            s1,
+            contig.id + "_1",
+            description = ""
+        )
+        r2 = SeqRecord(
+            s2,
+            contig.id + "_2",
+            description = ""
+        )
+
+        split_records.append(r1)
+        split_records.append(r2)
+    with open(output, "w") as output_handle:
+        SeqIO.write(split_records, output_handle, "fasta")
+
+def create_split_pileup(lf_pileup, contig_lengths, output):
+    length_df = pl.DataFrame({
+                                 "contig": list(contig_lengths.keys()),
+                                 "contig_length": list(contig_lengths.values())
+                             })
+    pileup = lf_pileup\
+        .filter(pl.col("contig").is_in(contig_lengths.keys()))\
+        .collect()
+
+    pileup = pileup.join(length_df, on = "contig", how = "left")
+
+    pileup = pileup\
+        .with_columns(
+            [
+                pl.when(pl.col("start") < (pl.col("contig_length") // 2))
+                    .then(pl.col("contig") + "_1")
+                    .otherwise(pl.col("contig") + "_2")
+                    .alias("contig"),
+                pl.when(pl.col("start") < (pl.col("contig_length") // 2))
+                    .then(pl.col("start"))
+                    .otherwise(pl.col("start") - (pl.col("contig_length") // 2))
+                    .alias("start")
+                
+            ]
+        )\
+        .drop(["length"])
+
+    pileup.write_csv(output, separator = "\t", include_header = False)
+        
 def check_files_exist(paths=[], directories=[]):
     """
     Checks if the given files and directories exist.
@@ -77,7 +127,6 @@ def check_files_exist(paths=[], directories=[]):
 
 def load_data(args, logger):
     """Loads data"""
-    # try:
     pileup = pl.scan_csv(args.pileup, separator = "\t", has_header = False, new_columns = [
                              "contig", "start", "end", "mod_type", "score", "strand", "start2", "end2", "color", "N_valid_cov", "percent_modified", "N_modified", "N_canonical", "N_other_mod", "N_delete", "N_fail", "N_diff", "N_nocall"
                          ])
@@ -94,148 +143,6 @@ def load_data(args, logger):
     return pileup, data, data_split, bin_consensus
 
 
-def find_motif_read_methylation(contig, pileup, motifs, perform_split = False):
-    data_split_read_meth = None if not perform_split else pl.DataFrame()
-
-    data_read_meth = pl.DataFrame()
-
-    
-    for motif_tup in motifs:
-        motif, mod_type = motif_tup
-        fwd_indexes = find_motif_indexes(contig.seq, motif)
-        rev_indexes = find_motif_indexes(contig.seq, motif.reverse_compliment())
-
-        p_fwd = pileup.filter(pl.col("strand") == "+", pl.col("mod_type") == mod_type, pl.col("start").is_in(fwd_indexes))
-        p_rev = pileup.filter(pl.col("strand") == "-", pl.col("mod_type") == mod_type, pl.col("start").is_in(rev_indexes))
-
-        p_con = pl.concat([p_fwd, p_rev])
-        if p_con.shape[0] == 0:
-            continue
-
-        p_read_meth_counts = p_con\
-            .with_columns(
-                motif_read_mean = pl.col("N_modified") / pl.col("N_valid_cov")
-            )\
-            .group_by("contig", "mod_type")\
-            .agg([
-                 pl.col("motif_read_mean").median().alias("median"),
-                 pl.col("contig").count().alias("N_motif_obs")
-             ]).with_columns(
-                pl.lit(motif.string).alias("motif"),
-                pl.lit(motif.mod_position).alias("mod_position"),
-                pl.lit(1).alias("motif_present")
-            )
-        data_read_meth= pl.concat([data_read_meth, p_read_meth_counts])
-
-
-        if perform_split:
-            length = len(contig.seq)
-
-            p_fwd_split = p_fwd.with_columns(
-                pl.when(pl.col("start") <= (length / 2)).then(pl.lit(contig.id + "_1")).otherwise(pl.lit(contig.id + "_2")).alias("contig")
-            )
-            p_rev_split = p_rev.with_columns(
-                pl.when(pl.col("start") <= (length / 2)).then(pl.lit(contig.id + "_1")).otherwise(pl.lit(contig.id + "_2")).alias("contig")
-            )
-
-            p_split_con = pl.concat([p_fwd_split, p_rev_split])
-            if p_split_con.shape[0] == 0:
-                continue
-
-            p_split_read_meth_counts = p_split_con\
-            .with_columns(
-                motif_read_mean = pl.col("N_modified") / pl.col("N_valid_cov")
-            )\
-            .group_by("contig", "mod_type")\
-            .agg([
-                 pl.col("motif_read_mean").median().alias("median"),
-                 pl.col("contig").count().alias("N_motif_obs")
-            ]).with_columns(
-                pl.lit(motif.string).alias("motif"),
-                pl.lit(motif.mod_position).alias("mod_position"),
-                pl.lit(1).alias("motif_present")
-            )            
-            data_split_read_meth= pl.concat([data_split_read_meth, p_split_read_meth_counts])
-
-    if data_read_meth.shape == (0,0):
-        data_read_meth = None
-
-    if perform_split and data_split_read_meth.shape == (0,0):
-        data_split_read_meth = None
-    return data_read_meth, data_split_read_meth
-
-        
-
-    
-
-
-def worker_function(task, motifs, counter, lock):
-    """
-    
-    """
-    pileup, contig, perform_split = task
-    
-    # try:
-    contig_meth, contig_split_meth = find_motif_read_methylation(
-        contig = contig,
-        pileup = pileup,
-        motifs = motifs,
-        perform_split = perform_split
-    )
-    with lock:
-      counter.value += 1
-    return contig_meth, contig_split_meth
-    # except:
-    #     with lock:
-    #       counter.value += 1
-    #     return None, None
-
-
-def find_read_methylation(contigs, pileup, assembly, motifs, logger, threads=1):
-    """
-    Calculate methylation pattern for each contig in the data split in parallel.
-    """
-    logger.info("Creating tasks")
-    tasks = []
-    for contig in contigs.keys():
-        subpileup = pileup.filter(pl.col("contig") == contig)
-        task = (subpileup, assembly[contig], contigs[contig])
-        tasks.append(task)
-    logger.info("Tasks done")
-    
-    # Create a progress manager
-    manager = multiprocessing.Manager()
-    counter = manager.Value('i', 0)
-    lock = manager.Lock()
-
-    # Create a pool of workers
-    pool = get_context("spawn").Pool(processes=threads)
-
-    # Create a process for the progress bar
-    progress_bar_process = multiprocessing.Process(target=update_progress_bar, args=(counter, len(tasks), True))
-    progress_bar_process.start()
-
-    # Put them workers to work
-    results = pool.starmap(worker_function, [(
-        task, 
-        motifs,
-        counter,
-        lock
-        ) for task in tasks])
-    contig_meth_results = [result[0] for result in results if result[0] is not None]
-    contig_split_meth_results = [result[1] for result in results if result[1] is not None]
-        
-    contig_meth_results = pl.concat(contig_meth_results)
-    contig_split_meth_results = pl.concat(contig_split_meth_results)
-    # Close the pool
-    pool.close()
-    pool.join()
-
-    # Close the progress bar
-    progress_bar_process.join()
-      
-    return contig_meth_results, contig_split_meth_results
-    
 def sort_columns(cols):
     mod_columns = sorted([col for col in cols if "median" in col], key=lambda x: x.split("_")[-2:])
     nomod_columns = sorted([col for col in cols if "motif_present" in col], key=lambda x: x.split("_")[-2:])
@@ -293,7 +200,6 @@ def check_data_file_args(logger, args):
     return args
         
 
-
 def generate_methylation_features(logger, args):
     logger.info("Adding Methylation Features")    
     logger.info("Loading data...")
@@ -313,47 +219,78 @@ def generate_methylation_features(logger, args):
     
     # Load the data
     logger.info("Loading methylation data...")
-    pileup, data, data_split, bin_consensus = load_data(args, logger)
+    lf_pileup, data, data_split, bin_consensus = load_data(args, logger)
     
     
     # Load the assembly file
     assembly = read_fasta(args.contig_fasta)
+
+    # create splitted assembly
+    contigs_to_split = data_split.select("contig").to_pandas()
+    contigs_to_split = contigs_to_split["contig"].str.rsplit("_",n=1).str[0].unique()
+
+    contig_lengths_for_splitting = get_split_contig_lengths(assembly, contigs_to_split)
+    create_assembly_with_split_contigs(
+        assembly, contig_lengths_for_splitting , os.path.join(args.output, "contig_split.fasta")
+    )
+    create_split_pileup(lf_pileup, contig_lengths_for_splitting, os.path.join(args.output, "pileup_split.bed"))
+
+    
         
     # Get the unique motifs
     motifs = bin_consensus\
         .select(["motif", "mod_position", "mod_type", "n_mod_bin", "n_nomod_bin"])\
         .with_columns(
-            motif_mod = pl.col("motif") + "_" + pl.col("mod_position").cast(pl.String) + "_" + pl.col("mod_type"),
+            motif_mod = pl.col("motif") + "_" + pl.col("mod_type") + "_" + pl.col("mod_position").cast(pl.String) ,
             n_motifs = pl.col("n_mod_bin") + pl.col("n_nomod_bin")
         )\
         .filter(pl.col("n_motifs") >= args.min_motif_observations_bin)\
-        .unique(["motif_mod"])
+        .get_column("motif_mod")\
+        .unique()
 
     if len(motifs) == 0:
         logger.error(f"No motifs found")
         sys.exit(1)
     
-    motif_list = [(Motif(row[0], row[1]), row[2])for row in motifs.unique(["motif_mod"]).iter_rows()]
+        
+    number_of_motifs = len(motifs)
+    logger.info(f"Motifs found (#{number_of_motifs}): {motifs}")
+
+    # Run methylation utils
+    code = run_epimetheus(
+        args.pileup,
+        args.contig_fasta,
+        motifs,
+        args.num_process,
+        args.min_valid_read_coverage,
+        os.path.join(args.output,"contig_methylation.tsv")
+    )
+    if code != 0:
+        logger.error("Error running methylation_utils for all contigs")
+        sys.exit(1)
+
     
-    number_of_motifs = len(motif_list)
-    logger.info(f"Motifs found (#{number_of_motifs}): {motif_list}")
+    code = run_epimetheus(
+        os.path.join(args.output, "pileup_split.bed"),
+        os.path.join(args.output, "contig_split.fasta"),
+        motifs,
+        args.num_process,
+        args.min_valid_read_coverage,
+        os.path.join(args.output,"contig_split_methylation.tsv")
+    )
+    if code != 0:
+        logger.error("Error running methylation_utils for split contigs")
+        sys.exit(1)
 
-    contigs_in_split = data_split.select("contig").to_pandas()
-    contigs_in_split = contigs_in_split["contig"].str.rsplit("_",n=1).str[0].unique()
-
-    contigs = {}
-    for c in data.get_column("contig"):
-        if c in contigs_in_split:
-            contigs[c] = True
-        else:
-            contigs[c] = False
-
-    pileup = pileup.filter(pl.col("N_valid_cov") >= args.min_valid_read_coverage)\
-        .select(["contig", "start", "strand","mod_type", "N_modified", "N_valid_cov"]).collect()
+    contig_methylation = pl.read_csv(os.path.join(args.output, "contig_methylation.tsv"), separator = "\t")\
+        .with_columns(
+            pl.when(pl.col("N_motif_obs") > 0).then(1).otherwise(0).alias("motif_present")
+        )
+    contig_split_methylation = pl.read_csv(os.path.join(args.output, "contig_split_methylation.tsv"), separator = "\t")\
+        .with_columns(
+            pl.when(pl.col("N_motif_obs") > 0).then(1).otherwise(0).alias("motif_present")
+        )
     
-    # Create methylation matrix for contig_splits
-    logger.info(f"Calculating methylation pattern for each contig split using {args.num_process} threads.")
-    contig_methylation, contig_split_methylation = find_read_methylation(contigs, pileup, assembly, motif_list, threads=args.num_process, logger = logger)
 
     # Methylation number is median of mean methylation. Filtering is applied for too few motif observations.
     contig_methylation = contig_methylation.filter(pl.col("N_motif_obs") >= args.min_motif_obs_contig)
