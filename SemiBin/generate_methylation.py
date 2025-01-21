@@ -277,10 +277,13 @@ def generate_methylation_features(logger, args):
     contigs_to_split = contigs_to_split["contig"].str.rsplit("_",n=1).str[0].unique()
 
     contig_lengths_for_splitting = get_split_contig_lengths(assembly, contigs_to_split)
+    logger.info("Splitting assembly")
     create_assembly_with_split_contigs(
         assembly, contig_lengths_for_splitting , os.path.join(args.output, "contig_split.fasta")
     )
-    create_split_pileup(args.pileup, contig_lengths_for_splitting, os.path.join(args.output, "pileup_split.bed"))
+
+    logger.info("Splitting pileup")
+    create_split_pileup(lf_pileup, contig_lengths_for_splitting, os.path.join(args.output, "pileup_split.bed"))
 
     
         
