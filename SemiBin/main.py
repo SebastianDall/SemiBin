@@ -338,7 +338,13 @@ def parse_args(args, is_semibin2, with_methylation):
             
         if with_methylation:
             if p in [generate_methylation_features, single_easy_bin, multi_easy_bin]:    
-                m.add_argument("--bin-motifs", help = "Path to the bin-consensus file from nanomotif", required = True)
+                motif_group = p.add_argument_group(title = "Motif Selection", description = "Provide EITHER --motifs-file or --motifs. They are mutally exclusive.")
+
+                
+                mx_group = motif_group.add_mutually_exclusive_group(required=True)
+                mx_group.add_argument("--motifs-file", help = "Path to the motifs file. Must contain the columns motif|mod_type|mod_position. OBS provide EITHER --motifs or --motifs-file")
+                mx_group.add_argument("--motifs", nargs="+", help="List of motifs specified via command line <motif>_<mod_type>_<mod_position> (e.g., GATC_m_3 RGATCY_a_2). OBS provide EITHER --motifs or --motifs-file")
+
                 m.add_argument("--pileup", help = "Path to the pileup file", required = True)
                 p.add_argument("--data", help="Path to the data file to append methylation.", required=False)
                 p.add_argument("--data-split", help="Path to the data split file to append methylation.", required=False)
