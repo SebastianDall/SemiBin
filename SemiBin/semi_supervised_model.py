@@ -52,31 +52,61 @@ class Semi_encoding_single(torch.nn.Module):
     """
     Model for k-mer features
     """
-    def __init__(self, num):
+    def __init__(self, num, first_part_dim):
         super(Semi_encoding_single, self).__init__()
-        self.encoder1 = torch.nn.Sequential(
-            Linear(num, 512),
-            nn.BatchNorm1d(512),
-            LeakyReLU(),
+        # self.encoder1 = torch.nn.Sequential(
+        #     Linear(num, 512),
+        #     nn.BatchNorm1d(512),
+        #     LeakyReLU(),
+        #     nn.Dropout(0.2),
+        #     Linear(512, 512),
+        #     nn.BatchNorm1d(512),
+        #     LeakyReLU(),
+        #     nn.Dropout(0.2),
+        #     Linear(512, 100),
+        # )
+        #
+        # self.decoder1 = torch.nn.Sequential(
+        #     Linear(100, 512),
+        #     nn.BatchNorm1d(512),
+        #     LeakyReLU(),
+        #     nn.Dropout(0.2),
+        #     Linear(512, 512),
+        #     nn.BatchNorm1d(512),
+        #     LeakyReLU(),
+        #     nn.Dropout(0.2),
+        #     Linear(512, num),
+        #     nn.Softmax(dim=1),
+        # )
+
+        self.__first_part_dim = first_part_dim
+
+        self.kmer_enc = torch.nn.Sequential(
+            Linear(self.__first_part_dim, 256),
+            nn.BatchNorm1d(256),
+            torch.nn.Sigmoid(),
             nn.Dropout(0.2),
+        )
+        self.meth_enc = torch.nn.Sequential(
+            Linear(num - self.__first_part_dim, 256),
+            nn.BatchNorm1d(256),
+            torch.nn.Sigmoid(),
+            nn.Dropout(0.2),
+        )
+        self.combined_enc = torch.nn.Sequential(
             Linear(512, 512),
             nn.BatchNorm1d(512),
-            LeakyReLU(),
+            torch.nn.Sigmoid(),
             nn.Dropout(0.2),
             Linear(512, 100),
         )
 
-        self.decoder1 = torch.nn.Sequential(
-            Linear(100, 512),
-            nn.BatchNorm1d(512),
-            LeakyReLU(),
-            nn.Dropout(0.2),
-            Linear(512, 512),
-            nn.BatchNorm1d(512),
-            LeakyReLU(),
-            nn.Dropout(0.2),
-            Linear(512, num),
-            nn.Softmax(dim=1),
+    def encoder1(self, input):
+
+        kmer_part, meth_part = input[:, :self.__first_part_dim], input[:, self.__first_part_dim:]
+
+        return self.combined_enc(
+            torch.concat((self.kmer_enc(kmer_part), self.meth_enc(meth_part)), dim=1)
         )
 
     def forward(self, input1, input2):

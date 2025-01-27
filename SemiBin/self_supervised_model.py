@@ -48,7 +48,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
     logger.info('Training model...')
     
     if not is_combined:
-        model = Semi_encoding_single(train_data.shape[1])
+        model = Semi_encoding_single(train_data.shape[1], first_part_dim=len(features_data['kmer']))
     else:
         model = Semi_encoding_multiple(train_data.shape[1])
 
@@ -60,7 +60,8 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
     # Set seet for reproducibility
     torch.manual_seed(0)
     np.random.seed(0)
-    
+
+    loss_list = []
     for epoch in tqdm(range(epoches)):
         for data_index, (datapath, data_split_path) in enumerate(zip(datapaths, data_splits)):
             if epoch == 0:
@@ -115,12 +116,9 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
             # cannot link data is sampled randomly
             n_cannot_link = min(len(train_data_split) * 1000 // 2, 4_000_000)
             indices1 = np.random.choice(data_length, size=n_cannot_link)
-            indices2 = indices1 + 1 + np.random.choice(data_length - 1,
-                                                       size=n_cannot_link)
+            indices2 = indices1 + 1 + np.random.choice(data_length - 1,  size=n_cannot_link)
             indices2 %= data_length
 
-
-            print(train_data)
             if epoch == 0:
                 logger.debug(
                     f'Number of must-link pairs: {len(train_data_split)//2}')
@@ -144,6 +142,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                 num_workers=0,
                 drop_last=True)
 
+            current_avg_batch_loss = 0
             for train_input1, train_input2, train_label in train_loader:
                 model.train()
                 train_input1 = train_input1.to(device=device, dtype=torch.float32)
@@ -157,9 +156,26 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                 supervised_loss = supervised_loss.to(device)
                 supervised_loss.backward()
                 optimizer.step()
+
+                current_avg_batch_loss += supervised_loss.item()
+
+            current_avg_batch_loss /= len(train_loader)
+            loss_list.append(current_avg_batch_loss)
+
+            # Save the model for each 10 epoch
+            if epoch % 10 == 0:
+                torch.save(model, out + f'_epoch_{epoch}')
+
         scheduler.step()
+
 
     logger.info('Training finished.')
     torch.save(model, out)
+
+    # Save the loss function
+    loss_file = os.path.join(os.path.dirname(out), 'losses.txt')
+    with open(loss_file, 'w') as f:
+        for epoch, loss in enumerate(loss_list):
+            f.write(f"{epoch+1} {loss}\n")
 
     return model
