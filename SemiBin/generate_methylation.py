@@ -174,11 +174,6 @@ def check_files_exist(paths=[], directories=[]):
 
 def load_data(args, logger):
     """Loads data"""
-    pileup = pl.scan_csv(args.pileup, separator = "\t", has_header = False, new_columns = [
-                             "contig", "start", "end", "mod_type", "score", "strand", "start2", "end2", "color", "N_valid_cov", "percent_modified", "N_modified", "N_canonical", "N_other_mod", "N_delete", "N_fail", "N_diff", "N_nocall"
-                         ])
-    bin_consensus = pl.read_csv(args.bin_motifs, separator="\t")
-    
     data = pl.read_csv(args.data)
     data = data\
         .rename({"": "contig"})
@@ -187,7 +182,7 @@ def load_data(args, logger):
         .rename({"": "contig"})
 
     logger.info("Data loaded successfully.")
-    return pileup, data, data_split, bin_consensus
+    return data, data_split 
 
 
 def sort_columns(cols):
@@ -255,7 +250,7 @@ def generate_methylation_features(logger, args):
     args = check_data_file_args(logger, args)
         
         
-    paths = [args.pileup, args.data, args.data_split, args.contig_fasta, args.bin_motifs]
+    paths = [args.pileup, args.data, args.data_split, args.contig_fasta]
     directories = []
 
     check_files_exist(paths, directories)
@@ -263,10 +258,31 @@ def generate_methylation_features(logger, args):
     # check if output directory exists
     if not os.path.exists(args.output):
         os.makedirs(args.output)
-    
+
+    if args.motifs_file:
+        motifs_file = pl.read_csv(args.bin_motifs, separator="\t")
+
+        # Get the unique motifs
+        motifs = motifs_file\
+            .select(["motif", "mod_position", "mod_type"])\
+            .with_columns(
+                motif_mod = pl.col("motif") + "_" + pl.col("mod_type") + "_" + pl.col("mod_position").cast(pl.String)
+            )\
+            .get_column("motif_mod")\
+            .unique()
+    elif args.motifs:
+        motifs = args.motifs
+    else:
+        logger.error("No motifs provided. Exiting")
+        sys.exit(1)
+
+    if len(motifs) == 0:
+        logger.error(f"No motifs found")
+        sys.exit(1)
+        
     # Load the data
     logger.info("Loading methylation data...")
-    lf_pileup, data, data_split, bin_consensus = load_data(args, logger)
+    data, data_split = load_data(args, logger)
     
     
     # Load the assembly file
@@ -283,26 +299,8 @@ def generate_methylation_features(logger, args):
     )
 
     logger.info("Splitting pileup")
-    create_split_pileup(lf_pileup, contig_lengths_for_splitting, os.path.join(args.output, "pileup_split.bed"))
+    create_split_pileup(args.pileup, contig_lengths_for_splitting, os.path.join(args.output, "pileup_split.bed"))
 
-    
-        
-    # Get the unique motifs
-    motifs = bin_consensus\
-        .select(["motif", "mod_position", "mod_type", "n_mod_bin", "n_nomod_bin"])\
-        .with_columns(
-            motif_mod = pl.col("motif") + "_" + pl.col("mod_type") + "_" + pl.col("mod_position").cast(pl.String) ,
-            n_motifs = pl.col("n_mod_bin") + pl.col("n_nomod_bin")
-        )\
-        .filter(pl.col("n_motifs") >= args.min_motif_observations_bin)\
-        .get_column("motif_mod")\
-        .unique()
-
-    if len(motifs) == 0:
-        logger.error(f"No motifs found")
-        sys.exit(1)
-    
-        
     number_of_motifs = len(motifs)
     logger.info(f"Motifs found (#{number_of_motifs}): {motifs}")
 
@@ -353,8 +351,8 @@ def generate_methylation_features(logger, args):
     
 
     # Methylation number is median of mean methylation. Filtering is applied for too few motif observations.
-    contig_methylation = contig_methylation.filter(pl.col("N_motif_obs") >= args.min_motif_obs_contig)
-    contig_split_methylation = contig_split_methylation.filter(pl.col("N_motif_obs") >= args.min_motif_obs_contig)
+    contig_methylation = contig_methylation.filter((pl.col("N_motif_obs") * pl.col("mean_read_cov")) >= 40)
+    contig_split_methylation = contig_split_methylation.filter((pl.col("N_motif_obs") * pl.col("mean_read_cov")) >= 40)
     
     data_split_methylation_matrix = create_methylation_matrix(
         methylation_features = contig_split_methylation
