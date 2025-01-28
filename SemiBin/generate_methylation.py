@@ -172,19 +172,6 @@ def check_files_exist(paths=[], directories=[]):
             raise FileNotFoundError(f"The directory {d} does not exist.")
 
 
-def load_data(args, logger):
-    """Loads data"""
-    data = pl.read_csv(args.data)
-    data = data\
-        .rename({"": "contig"})
-    data_split = pl.read_csv(args.data_split)
-    data_split = data_split\
-        .rename({"": "contig"})
-
-    logger.info("Data loaded successfully.")
-    return data, data_split 
-
-
 def sort_columns(cols):
     mod_columns = sorted([col for col in cols if "median" in col], key=lambda x: x.split("_")[-2:])
     nomod_columns = sorted([col for col in cols if "motif_present" in col], key=lambda x: x.split("_")[-2:])
@@ -260,7 +247,7 @@ def generate_methylation_features(logger, args):
         os.makedirs(args.output)
 
     if args.motifs_file:
-        motifs_file = pl.read_csv(args.bin_motifs, separator="\t")
+        motifs_file = pl.read_csv(args.motifs_file, separator="\t")
 
         # Get the unique motifs
         motifs = motifs_file\
@@ -281,8 +268,12 @@ def generate_methylation_features(logger, args):
         sys.exit(1)
         
     # Load the data
-    logger.info("Loading methylation data...")
-    data, data_split = load_data(args, logger)
+    data = pl.read_csv(args.data)
+    data = data\
+        .rename({"": "contig"})
+    data_split = pl.read_csv(args.data_split)
+    data_split = data_split\
+        .rename({"": "contig"})
     
     
     # Load the assembly file
