@@ -111,12 +111,12 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                     train_data_split = np.concatenate((train_data_split_kmer, train_data_split_depth), axis = 1)
 
             
-            data_length = len(train_data)
+            data_length = len(train_data_split)
             
             # cannot link data is sampled randomly
             n_cannot_link = min(len(train_data_split) * 1000 // 2, 4_000_000)
             indices1 = np.random.choice(data_length, size=n_cannot_link)
-            indices2 = indices1 + 1 + np.random.choice(data_length - 1,  size=n_cannot_link)
+            indices2 = np.random.choice(data_length, size=n_cannot_link)
             indices2 %= data_length
 
             if epoch == 0:
@@ -125,12 +125,8 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                 logger.debug(
                     f'Number of cannot-link pairs: {n_cannot_link}')
 
-            train_input_1 = np.concatenate(
-                                (train_data[indices1],
-                                train_data_split[::2]))
-            train_input_2 = np.concatenate(
-                                    (train_data[indices2],
-                                    train_data_split[1::2]))
+            train_input_1 = np.concatenate((train_data_split[indices1], train_data_split[::2]))
+            train_input_2 = np.concatenate((train_data_split[indices2], train_data_split[1::2]))
             
             train_labels = np.zeros(len(train_input_1), dtype=np.float32)
             train_labels[len(indices1):] = 1
@@ -148,8 +144,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                 train_input1 = train_input1.to(device=device, dtype=torch.float32)
                 train_input2 = train_input2.to(device=device, dtype=torch.float32)
                 train_label = train_label.to(device=device, dtype=torch.float32)
-                embedding1, embedding2 = model.forward(
-                    train_input1, train_input2)
+                embedding1, embedding2 = model.forward(train_input1, train_input2)
                 # decoder1, decoder2 = model.decoder(embedding1, embedding2)
                 optimizer.zero_grad()
                 supervised_loss = loss_function(embedding1.double(), embedding2.double(), train_label.double())
