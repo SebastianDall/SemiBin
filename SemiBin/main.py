@@ -1128,7 +1128,7 @@ def training(logger, contig_fasta, num_process,
         data_ = pd.read_csv(data[0], index_col=0)
         feature_data = get_features(data_)
         
-        col_name = data_.columns[feature_data["depth"][-1]].split('_')[-1]
+        col_name = feature_data["depth"][-1].split('_')[-1]
         is_combined = col_name != 'var'
 
     else:
@@ -1180,7 +1180,7 @@ def binning_preprocess(data, depth_metabat2, model_path, environment, device):
     data.index = data.index.astype(str)
 
     if depth_metabat2 is None:
-        col_name = data.columns[features_data["depth"][-1]].split('_')[-1]
+        col_name = features_data["depth"][-1].split('_')[-1]
         is_combined = col_name != 'var'
         n_sample = (len(features_data["depth"])) // 2 if not is_combined else (len(features_data["depth"]))
     else:

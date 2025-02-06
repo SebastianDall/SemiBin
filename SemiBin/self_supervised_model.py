@@ -33,15 +33,20 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
     import pandas as pd
     from sklearn.preprocessing import normalize
     import numpy as np
+    from sklearn.decomposition import PCA
     
     train_data = pd.read_csv(datapaths[0], index_col=0)
     features_data = get_features(train_data)
-    train_data = train_data.values
     
     features_data_split = get_features(pd.read_csv(data_splits[0], index_col=0))
     
+    if len(features_data['motif']) > 0:
+        logger.info("Reducing motif dimensions")
+        pca = PCA(n_components = 0.90, svd_solver = "full")
+        motif_data = pca.fit_transform(train_data[features_data['motif']].values)
     if not is_combined:
-        train_data = train_data[:, features_data['kmer'] + features_data['motif'] + features_data['motif_present']]
+        train_data = np.concatenate((train_data[features_data["kmer"]].values, motif_data), axis = 1)
+
 
     torch.set_num_threads(num_process)
 
@@ -76,19 +81,28 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                     sys.exit(1)
 
             train_data = data.values
-            train_data_motif_is_present_matrix = train_data[:, features_data["motif_present"]]
+            # train_data_motif_is_present_matrix = train_data[:, features_data["motif_present"]]
             
             train_data_split = data_split.values
-            train_data_split_motif_is_present_matrix = train_data_split[:, features_data_split["motif_present"]]
+            # train_data_split_motif_is_present_matrix = train_data_split[:, features_data_split["motif_present"]]
 
             if not is_combined:
-                train_data = train_data[:, features_data['kmer'] + features_data['motif']]
-                train_data_split = train_data_split[:, features_data_split['kmer'] + features_data_split['motif']]
-                
-                if len(features_data["motif"]) > 0:
+                if len(features_data["motif"]) == 0:
+                    train_data = data[features_data['kmer'] + features_data['motif']].values
+                    train_data_split = data_split[features_data_split['kmer'] + features_data_split['motif']].values
+                else:
+                    # logger.info("Transforming motif dimensions")
+                    # logger.info(f"Dimensions before: {len(features_data['motif'])}")
+                    train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
+                    train_motifs_split_decorrelated = pca.transform(data_split[features_data["motif"]].values)
+                    # logger.info(f"Dimensions after: {train_motifs_decorrelated.shape}")
+
+                    train_data = np.concatenate((data[features_data["kmer"]].values, train_motifs_decorrelated), axis = 1)
+                    train_data_split = np.concatenate((data_split[features_data["kmer"]].values, train_motifs_split_decorrelated), axis = 1)
                     train_data, train_data_split = normalize_kmer_motif_features(train_data, train_data_split)
-                    train_data = np.concatenate((train_data, train_data_motif_is_present_matrix), axis = 1)
-                    train_data_split = np.concatenate((train_data_split, train_data_split_motif_is_present_matrix), axis = 1)
+                    # logger.info(f"train_data: {train_data.shape} | train_data_split: {train_data_split.shape}")
+                    # train_data = np.concatenate((train_data, train_data_motif_is_present_matrix), axis = 1)
+                    # train_data_split = np.concatenate((train_data_split, train_data_split_motif_is_present_matrix), axis = 1)
                     
                 
             else:
@@ -120,7 +134,6 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
             indices2 %= data_length
 
 
-            print(train_data)
             if epoch == 0:
                 logger.debug(
                     f'Number of must-link pairs: {len(train_data_split)//2}')
@@ -133,6 +146,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
             train_input_2 = np.concatenate(
                                     (train_data[indices2],
                                     train_data_split[1::2]))
+            # logger.info(f"train_input_1: {train_input_1.shape} | train_input_2: {train_input_2.shape}")
             
             train_labels = np.zeros(len(train_input_1), dtype=np.float32)
             train_labels[len(indices1):] = 1

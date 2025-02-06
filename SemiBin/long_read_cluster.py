@@ -5,6 +5,7 @@ import polars as pl
 from .utils import cal_num_bins, get_marker, write_bins, normalize_kmer_motif_features
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import kneighbors_graph
+from sklearn.decomposition import PCA
 from collections import defaultdict
 from scipy.sparse import save_npz
 
@@ -55,16 +56,23 @@ def cluster_long_read(logger, model, data, device, is_combined,
     from .utils import norm_abundance
     contig_list = data.index.tolist()
 
-    if len(features_data['motif_present']) > 0:
-        train_data_motif_present = data.values[:, features_data['motif_present']]
+    # if len(features_data['motif_present']) > 0:
+    #     train_data_motif_present = data.values[:, features_data['motif_present']]
+
+    if len(features_data['motif']) > 0:
+        pca = PCA(n_components = 0.90, svd_solver = "full")
+        pca.fit(data[features_data['motif']].values)
     
     if not is_combined:
-        train_data_input = data.values[:, features_data["kmer"] + features_data["motif"]]
-        print(train_data_input.shape)
-        if len(features_data["motif"]) > 0:
-            print("I was here")
+        if len(features_data["motif"]) == 0:
+            train_data_input = data.values[:, features_data["kmer"]]
+
+        else:
+            train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
+            train_data_input = np.concatenate((data[features_data["kmer"]].values, train_motifs_decorrelated), axis = 1)
+
             train_data_input, _ = normalize_kmer_motif_features(train_data_input, train_data_input)
-            train_data_input = np.concatenate((train_data_input, train_data_motif_present), axis = 1)
+            # train_data_input = np.concatenate((train_data_input, train_data_motif_present), axis = 1)
     else:
         train_data_input = data.values
         if norm_abundance(train_data_input, features_data):
@@ -90,7 +98,7 @@ def cluster_long_read(logger, model, data, device, is_combined,
         length_weight = np.log10(length_weight)
         
     if not is_combined:
-        depth = data.values[:, features_data["depth"]].astype(np.float32)
+        depth = data[features_data["depth"]].values.astype(np.float32)
         mean_index = [2 * temp for temp in range(n_sample)]
         depth = depth[:, mean_index]
         embedding_new = np.concatenate((embedding, np.log(depth)), axis=1)
