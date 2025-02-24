@@ -152,7 +152,7 @@ def create_split_pileup(
             ]
             f_out.write("\t".join(out_cols) + "\n")
         
-def check_files_exist(paths=[], directories=[]):
+def check_files_exist(paths=[]):
     """
     Checks if the given files and directories exist.
     
@@ -166,28 +166,24 @@ def check_files_exist(paths=[], directories=[]):
     for f in paths:
         if not os.path.exists(f):
             raise FileNotFoundError(f"The file {f} does not exist.")
-    
-    for d in directories:
-        if not os.path.exists(d):
-            raise FileNotFoundError(f"The directory {d} does not exist.")
 
 
-def load_data(args, logger):
+def load_data(logger, bin_motifs_path, data_path, data_split_path):
     """Loads data"""
-    pileup = pl.scan_csv(args.pileup, separator = "\t", has_header = False, new_columns = [
-                             "contig", "start", "end", "mod_type", "score", "strand", "start2", "end2", "color", "N_valid_cov", "percent_modified", "N_modified", "N_canonical", "N_other_mod", "N_delete", "N_fail", "N_diff", "N_nocall"
-                         ])
-    bin_consensus = pl.read_csv(args.bin_motifs, separator="\t")
+    # pileup = pl.scan_csv(pileup_path, separator = "\t", has_header = False, new_columns = [
+    #                          "contig", "start", "end", "mod_type", "score", "strand", "start2", "end2", "color", "N_valid_cov", "percent_modified", "N_modified", "N_canonical", "N_other_mod", "N_delete", "N_fail", "N_diff", "N_nocall"
+    #                      ])
+    bin_consensus = pl.read_csv(bin_motifs_path, separator="\t")
     
-    data = pl.read_csv(args.data)
+    data = pl.read_csv(data_path)
     data = data\
         .rename({"": "contig"})
-    data_split = pl.read_csv(args.data_split)
+    data_split = pl.read_csv(data_split_path)
     data_split = data_split\
         .rename({"": "contig"})
 
     logger.info("Data loaded successfully.")
-    return pileup, data, data_split, bin_consensus
+    return data, data_split, bin_consensus
 
 
 def sort_columns(cols):
@@ -234,31 +230,29 @@ def create_methylation_matrix(methylation_features):
 
 
 
-def check_data_file_args(logger, args):
-    if args.data and args.data_split:
+def check_data_file_args(logger, data, data_split, args):
+    if data and data_split:
         logger.info("Using provided data and data_split files.")
-    elif args.data or args.data_split:
+    elif data or data_split:
         logger.error("Missing data or data_split path. Either both should be provided or none.")
         sys.exit(1)
     else:
-        logger.info("Using default data and data_split files. Checking output directory.")
-        args.data = os.path.join(args.output, "data.csv")
-        args.data_split = os.path.join(args.output, "data_split.csv")
-    return args
+        logger.info("Using default data and data_split files. Checking output directory...")
+        data = os.path.join(args.output, "data.csv")
+        data_split = os.path.join(args.output, "data_split.csv")
+    return data, data_split
         
 
-def generate_methylation_features(logger, args):
-    logger.info("Adding Methylation Features")    
+def generate_methylation_features(logger, contig_fasta_path, pileup_path, bin_motifs_path, args, data_path = None, data_split_path = None):
+    logger.info("Adding Methylation Features")
     logger.info("Loading data...")
     
     # Check for the data and data_split file
-    args = check_data_file_args(logger, args)
+    data_path, data_split_path = check_data_file_args(logger, data_path, data_split_path, args)
         
-        
-    paths = [args.pileup, args.data, args.data_split, args.contig_fasta, args.bin_motifs]
-    directories = []
+    paths = [pileup_path, data_path, data_split_path, contig_fasta_path, bin_motifs_path]
 
-    check_files_exist(paths, directories)
+    check_files_exist(paths)
     
     # check if output directory exists
     if not os.path.exists(args.output):
@@ -266,11 +260,16 @@ def generate_methylation_features(logger, args):
     
     # Load the data
     logger.info("Loading methylation data...")
-    lf_pileup, data, data_split, bin_consensus = load_data(args, logger)
-    
+    data, data_split, bin_consensus = load_data(
+        logger = logger,
+        # pileup_path = pileup_path,
+        data_path = data_path,
+        data_split_path = data_split_path,
+        bin_motifs_path = bin_motifs_path
+    )
     
     # Load the assembly file
-    assembly = read_fasta(args.contig_fasta)
+    assembly = read_fasta(contig_fasta_path)
 
     # create splitted assembly
     contigs_to_split = data_split.select("contig").to_pandas()
@@ -280,7 +279,7 @@ def generate_methylation_features(logger, args):
     create_assembly_with_split_contigs(
         assembly, contig_lengths_for_splitting , os.path.join(args.output, "contig_split.fasta")
     )
-    create_split_pileup(args.pileup, contig_lengths_for_splitting, os.path.join(args.output, "pileup_split.bed"))
+    create_split_pileup(pileup_path, contig_lengths_for_splitting, os.path.join(args.output, "pileup_split.bed"))
 
     
         
@@ -305,8 +304,8 @@ def generate_methylation_features(logger, args):
 
     # Run methylation utils
     code = run_epimetheus(
-        args.pileup,
-        args.contig_fasta,
+        pileup_path,
+        contig_fasta_path,
         motifs,
         args.num_process,
         args.min_valid_read_coverage,
@@ -399,4 +398,42 @@ def generate_methylation_features(logger, args):
         sys.exit(1)
     
     
+def generate_methylation_features_multi(
+    logger,
+    pileup_paths,
+    bin_motifs,
+    args,
+    sample_list = None,
+):
+    # TODO: Get sample names
+    # - Split concatenated_fastq.gz into the samples
+    # - Create a tmp assembly with only that sample
+    # - Run the generate_methylation_single command
+    # - Remove the temp
     
+    # Check if sample names and pileup name match.
+    import copy
+    pileup_dict = {p.split(".")[0]: p for p in pileup_paths}
+
+    if not sample_list:
+        samples_dir = os.path.join(args.output, "samples")
+        sample_list = [d for d in os.listdir(samples_dir) if os.path.isdir(os.path.join(samples_dir, d))]
+
+    missing_samples = set(sample_list) - set(pileup_dict.keys())
+    if missing_samples:
+        raise ValueError(f"Missing pileup files for samples: {', '.join(missing_samples)}")
+
+    for sample in sample_list:
+        logger.info(f"Finding methylation pattern of: {sample}")
+        run_args = copy.copy(args)
+        run_args.output = os.path.join(args.output, "samples", sample)
+        generate_methylation_features(
+            logger = logger,
+            contig_fasta_path = os.path.join(args.output, "samples", f"{sample}.fa"),
+            pileup_path = pileup_dict[sample],
+            bin_motifs_path = bin_motifs,
+            args = run_args,
+            data_path = os.path.join(run_args.output, "data.csv"),
+            data_split_path = os.path.join(run_args.output, "data_split.csv")
+        )
+
