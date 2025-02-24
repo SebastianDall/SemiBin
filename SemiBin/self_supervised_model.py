@@ -81,45 +81,40 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                     sys.exit(1)
 
             train_data = data.values
-            # train_data_motif_is_present_matrix = train_data[:, features_data["motif_present"]]
-            
             train_data_split = data_split.values
-            # train_data_split_motif_is_present_matrix = train_data_split[:, features_data_split["motif_present"]]
 
             if not is_combined:
                 if len(features_data["motif"]) == 0:
-                    train_data = data[features_data['kmer'] + features_data['motif']].values
-                    train_data_split = data_split[features_data_split['kmer'] + features_data_split['motif']].values
+                    train_data = data[features_data['kmer']].values
+                    train_data_split = data_split[features_data_split['kmer']].values
                 else:
-                    # logger.info("Transforming motif dimensions")
-                    # logger.info(f"Dimensions before: {len(features_data['motif'])}")
                     train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
                     train_motifs_split_decorrelated = pca.transform(data_split[features_data["motif"]].values)
-                    # logger.info(f"Dimensions after: {train_motifs_decorrelated.shape}")
 
                     train_data = np.concatenate((data[features_data["kmer"]].values, train_motifs_decorrelated), axis = 1)
                     train_data_split = np.concatenate((data_split[features_data["kmer"]].values, train_motifs_split_decorrelated), axis = 1)
                     train_data, train_data_split = normalize_kmer_motif_features(train_data, train_data_split)
-                    # logger.info(f"train_data: {train_data.shape} | train_data_split: {train_data_split.shape}")
-                    # train_data = np.concatenate((train_data, train_data_motif_is_present_matrix), axis = 1)
-                    # train_data_split = np.concatenate((train_data_split, train_data_split_motif_is_present_matrix), axis = 1)
                     
                 
             else:
                 if norm_abundance(train_data, features_data):
-                    train_data_kmer  = train_data[:, features_data['kmer'] + features_data['motif']]
-                    train_data_split_kmer  = train_data_split[:, features_data_split['kmer'] + features_data_split['motif']]
+                    train_data_kmer  = data[features_data['kmer']].values
+                    train_data_split_kmer  = data_split[features_data_split['kmer']].values
                     
                     if len(features_data["motif"]) > 0:
+                        train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
+                        train_motifs_split_decorrelated = pca.transform(data_split[features_data["motif"]].values)
+
                         train_data_kmer, train_data_split_kmer = normalize_kmer_motif_features(train_data_kmer, train_data_split_kmer)
-                        train_data_kmer = np.concatenate((train_data_kmer, train_data_motif_is_present_matrix), axis = 1)
-                        train_data_split_kmer = np.concatenate((train_data_split_kmer, train_data_split_motif_is_present_matrix), axis = 1)
+
+                        train_data_kmer = np.concatenate((train_data_kmer, train_motifs_decorrelated), axis = 1)
+                        train_data_split_kmer = np.concatenate((train_data_split_kmer, train_motifs_split_decorrelated), axis = 1)
                     
-                    train_data_depth = train_data[:, features_data['depth']]
+                    train_data_depth = train_data[features_data['depth']].values
                     train_data_depth = normalize(train_data_depth, axis=1, norm='l1')
                     train_data = np.concatenate((train_data_kmer, train_data_depth), axis=1)
 
-                    train_data_split_depth = train_data_split[:, features_data_split['depth']]
+                    train_data_split_depth = train_data_split[features_data_split['depth']].values
                     train_data_split_depth = normalize(train_data_split_depth, axis=1, norm='l1')
                     train_data_split = np.concatenate((train_data_split_kmer, train_data_split_depth), axis = 1)
 

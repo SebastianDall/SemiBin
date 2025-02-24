@@ -56,9 +56,6 @@ def cluster_long_read(logger, model, data, device, is_combined,
     from .utils import norm_abundance
     contig_list = data.index.tolist()
 
-    # if len(features_data['motif_present']) > 0:
-    #     train_data_motif_present = data.values[:, features_data['motif_present']]
-
     if len(features_data['motif']) > 0:
         pca = PCA(n_components = 0.90, svd_solver = "full")
         pca.fit(data[features_data['motif']].values)
@@ -72,16 +69,16 @@ def cluster_long_read(logger, model, data, device, is_combined,
             train_data_input = np.concatenate((data[features_data["kmer"]].values, train_motifs_decorrelated), axis = 1)
 
             train_data_input, _ = normalize_kmer_motif_features(train_data_input, train_data_input)
-            # train_data_input = np.concatenate((train_data_input, train_data_motif_present), axis = 1)
     else:
-        train_data_input = data.values
+        train_data_input = data
         if norm_abundance(train_data_input, features_data):
-            train_data_kmer = train_data_input[:, features_data["kmer"] + features_data["motif"]]
+            train_data_kmer = train_data_input[features_data["kmer"]].values
             if len(features_data["motif"]) > 0:
+                train_motifs_decorrelated = pca.transform(train_data_input[features_data["motif"]].values)
                 train_data_kmer, _ = normalize_kmer_motif_features(train_data_kmer, train_data_kmer)
-                train_data_kmer = np.concatenate((train_data_kmer, train_data_motif_present), axis = 1)
+                train_data_kmer = np.concatenate((train_data_kmer, train_motifs_decorrelated), axis = 1)
             
-            train_data_depth = train_data_input[:, features_data["depth"]]
+            train_data_depth = train_data_input[features_data["depth"]].values
             from sklearn.preprocessing import normalize
             train_data_depth = normalize(train_data_depth, axis=1, norm='l1')
             train_data_input = np.concatenate((train_data_kmer, train_data_depth), axis=1)

@@ -653,7 +653,7 @@ def compute_min_length(min_length, fafile, ratio):
 def norm_abundance(data, features):
     import numpy as np
     n = data.shape[1] - len(features["kmer"]) - len(features["motif"])
-    assert n == features["depth"], "Depth should equal all_features - motifs - kmer!"
+    assert n == len(features["depth"]), "Depth should equal all_features - motifs - kmer!"
     print("features in norm_abundance: ", n)
     flag = False
 
@@ -661,7 +661,7 @@ def norm_abundance(data, features):
         flag = True
     else:
         if n >= 5:
-            if np.mean(np.sum(data[:, features["depth"]], axis=1)) > 2:
+            if np.mean(np.sum(data[features["depth"]].values, axis=1)) > 2:
                 flag = True
     return flag
 
