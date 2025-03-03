@@ -353,12 +353,12 @@ def parse_args(args, is_semibin2, with_methylation):
                 mx_group.add_argument("--motifs", nargs="+", help="List of motifs specified via command line <motif>_<mod_type>_<mod_position> (e.g., GATC_m_3 RGATCY_a_2). OBS provide EITHER --motifs or --motifs-file")
 
                 p.add_argument("--min-valid-read-coverage", help="Minimum number of valid read observations for a motif in a contig (Default: 8).", default=8, type=int)
-                
-                p.add_argument("--data", help="Path to the data file to append methylation.", required=False)
-                p.add_argument("--data-split", help="Path to the data split file to append methylation.", required=False)
+                p.add_argument("--min-motif-observations", help="Minimum number of motif observations on a contig (Default: 4).", default=4, type=int)
 
             if p in [generate_methylation_features_single, single_easy_bin]:
                 m.add_argument("--pileup", help = "Path to the pileup file", required = True)
+                p.add_argument("--data", help="Path to the data file to append methylation.", required=False)
+                p.add_argument("--data-split", help="Path to the data split file to append methylation.", required=False)
             if p in [generate_methylation_features_multi, multi_easy_bin]:
                 m.add_argument("--pileups", nargs='*', help = "Path to the pileup files. Should be named according to sample name <sample>.bed such that it matches '--input-bams'", required = True)
                 
@@ -1310,7 +1310,6 @@ def single_easy_binning(logger, args, binned_length,
             logger,
             contig_fasta_path = args.contig_fasta,
             pileup_path = args.pileup,
-            bin_motifs_path = args.bin_motifs,
             args = args,
             data_path = args.data,
             data_split_path = args.data_split
@@ -1384,7 +1383,6 @@ def multi_easy_binning(logger, args, device, with_methylation=False):
             logger = logger,
             sample_list = sample_list,
             pileup_paths = args.pileups,
-            bin_motifs = args.bin_motifs,
             args = args
         )
     for sample_index, sample in enumerate(sample_list):
@@ -1625,7 +1623,6 @@ def main2(args=None, is_semibin2=True, with_methylation=False):
                 logger,
                 contig_fasta_path = args.contig_fasta,
                 pileup_path = args.pileup,
-                bin_motifs_path = args.bin_motifs,
                 args = args,
                 data_path = args.data,
                 data_split_path = args.data_split
@@ -1635,7 +1632,6 @@ def main2(args=None, is_semibin2=True, with_methylation=False):
             generate_methylation_features_multi(
                 logger = logger,
                 pileup_paths = args.pileups,
-                bin_motifs = args.bin_motifs,
                 args = args,
                 sample_list = None
             )

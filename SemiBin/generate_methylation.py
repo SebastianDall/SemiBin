@@ -225,14 +225,14 @@ def check_data_file_args(logger, data, data_split, args):
     return data, data_split
         
 
-def generate_methylation_features(logger, contig_fasta_path, pileup_path, bin_motifs_path, args, data_path = None, data_split_path = None):
+def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, data_path = None, data_split_path = None):
     logger.info("Adding Methylation Features")
     logger.info("Loading data...")
     
     # Check for the data and data_split file
     data_path, data_split_path = check_data_file_args(logger, data_path, data_split_path, args)
         
-    paths = [pileup_path, data_path, data_split_path, contig_fasta_path, bin_motifs_path]
+    paths = [pileup_path, data_path, data_split_path, contig_fasta_path]
     check_files_exist(paths)
     
     # check if output directory exists
@@ -261,10 +261,10 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, bin_mo
         sys.exit(1)
         
     # Load the data
-    data = pl.read_csv(args.data)
+    data = pl.read_csv(data_path)
     data = data\
         .rename({"": "contig"})
-    data_split = pl.read_csv(args.data_split)
+    data_split = pl.read_csv(data_split_path)
     data_split = data_split\
         .rename({"": "contig"})
     
@@ -335,8 +335,10 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, bin_mo
     
 
     # Methylation number is median of mean methylation. Filtering is applied for too few motif observations.
-    contig_methylation = contig_methylation.filter((pl.col("N_motif_obs") * pl.col("mean_read_cov")) >= 40)
-    contig_split_methylation = contig_split_methylation.filter((pl.col("N_motif_obs") * pl.col("mean_read_cov")) >= 40)
+    # contig_methylation = contig_methylation.filter((pl.col("N_motif_obs") * pl.col("mean_read_cov")) >= 16)
+    # contig_split_methylation = contig_split_methylation.filter((pl.col("N_motif_obs") * pl.col("mean_read_cov")) >= 16)
+    contig_methylation = contig_methylation.filter((pl.col("N_motif_obs") >= args.min_motif_observations) & (pl.col("mean_read_cov") >= args.min_valid_read_coverage))
+    contig_split_methylation = contig_split_methylation.filter((pl.col("N_motif_obs") >= args.min_motif_observations) & (pl.col("mean_read_cov") >= args.min_valid_read_coverage))
     
     data_split_methylation_matrix = create_methylation_matrix(
         methylation_features = contig_split_methylation
@@ -387,15 +389,9 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, bin_mo
 def generate_methylation_features_multi(
     logger,
     pileup_paths,
-    bin_motifs,
     args,
     sample_list = None,
 ):
-    # TODO: Get sample names
-    # - Split concatenated_fastq.gz into the samples
-    # - Create a tmp assembly with only that sample
-    # - Run the generate_methylation_single command
-    # - Remove the temp
     
     # Check if sample names and pileup name match.
     import copy
@@ -417,7 +413,6 @@ def generate_methylation_features_multi(
             logger = logger,
             contig_fasta_path = os.path.join(args.output, "samples", f"{sample}.fa"),
             pileup_path = pileup_dict[sample],
-            bin_motifs_path = bin_motifs,
             args = run_args,
             data_path = os.path.join(run_args.output, "data.csv"),
             data_split_path = os.path.join(run_args.output, "data_split.csv")
