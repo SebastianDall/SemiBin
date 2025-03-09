@@ -395,7 +395,19 @@ def generate_methylation_features_multi(
     
     # Check if sample names and pileup name match.
     import copy
-    pileup_dict = {p.split(".")[0]: p for p in pileup_paths}
+    pileup_dict = {}
+
+    for p in pileup_paths:
+        if not isinstance(p, str) or not os.path.isfile(p):
+            raise ValueError(f"Invalid file: {p}")
+
+        base_name = os.path.basename(p).rsplit(".", 1)[0]
+
+        if base_name in pileup_dict:
+            logger.error(f"Duplicate entry detected ({base_name}). Exiting")
+            sys.exit(1)
+
+        pileup_dict[base_name] = p
 
     if not sample_list:
         samples_dir = os.path.join(args.output, "samples")
