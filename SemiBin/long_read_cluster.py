@@ -73,7 +73,7 @@ def cluster_long_read(logger, model, data, device, is_combined,
         train_data_input = data
         if norm_abundance(train_data_input, features_data):
             train_data_kmer = train_data_input[features_data["kmer"]].values
-            if len(features_data["motif"]) > 0:
+            if features_data["motif"]:
                 train_motifs_decorrelated = pca.transform(train_data_input[features_data["motif"]].values)
                 train_data_kmer, _ = normalize_kmer_motif_features(train_data_kmer, train_data_kmer)
                 train_data_kmer = np.concatenate((train_data_kmer, train_motifs_decorrelated), axis = 1)
@@ -91,7 +91,9 @@ def cluster_long_read(logger, model, data, device, is_combined,
 
     length_weight = np.array(
         [len(contig_dict[name]) for name in contig_list])
-    if len(features_data["motif"]) > 0:
+
+    # Weight the node in the DBSCAN according to contig length
+    if features_data["motif"]:
         length_weight = np.log10(length_weight)
         
     if not is_combined:

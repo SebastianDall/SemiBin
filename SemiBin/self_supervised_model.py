@@ -88,7 +88,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
             train_data_split = data_split.values
 
             if not is_combined:
-                if len(features_data["motif"]) == 0:
+                if not features_data["motif"]:
                     train_data = data[features_data['kmer']].values
                     train_data_split = data_split[features_data_split['kmer']].values
                 else:
@@ -105,7 +105,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                     train_data_kmer  = data[features_data['kmer']].values
                     train_data_split_kmer  = data_split[features_data_split['kmer']].values
                     
-                    if len(features_data["motif"]) > 0:
+                    if features_data["motif"]:
                         train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
                         train_motifs_split_decorrelated = pca.transform(data_split[features_data["motif"]].values)
 
