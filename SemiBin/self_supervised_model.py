@@ -40,12 +40,16 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
     
     features_data_split = get_features(pd.read_csv(data_splits[0], index_col=0))
     
-    if len(features_data['motif']) > 0:
+    if features_data['motif']:
         logger.info("Reducing motif dimensions")
         pca = PCA(n_components = 0.90, svd_solver = "full")
         motif_data = pca.fit_transform(train_data[features_data['motif']].values)
+
     if not is_combined:
-        train_data = np.concatenate((train_data[features_data["kmer"]].values, motif_data), axis = 1)
+        if features_data['motif']:
+            train_data = np.concatenate((train_data[features_data["kmer"]].values, motif_data), axis = 1)
+        else:
+            train_data = train_data[features_data["kmer"]].values
 
 
     torch.set_num_threads(num_process)
