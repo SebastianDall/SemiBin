@@ -56,13 +56,13 @@ def cluster_long_read(logger, model, data, device, is_combined,
     from .utils import norm_abundance
     contig_list = data.index.tolist()
 
-    if len(features_data['motif']) > 0:
+    if features_data['motif']:
         pca = PCA(n_components = 0.90, svd_solver = "full")
         pca.fit(data[features_data['motif']].values)
     
     if not is_combined:
-        if len(features_data["motif"]) == 0:
-            train_data_input = data.values[:, features_data["kmer"]]
+        if not features_data["motif"]:
+            train_data_input = data[features_data["kmer"]].values
 
         else:
             train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
