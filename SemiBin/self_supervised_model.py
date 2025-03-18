@@ -33,19 +33,14 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
     import pandas as pd
     from sklearn.preprocessing import normalize
     import numpy as np
-    from sklearn.decomposition import PCA
     
     train_data = pd.read_csv(datapaths[0], index_col=0)
     features_data = get_features(train_data)
     
     features_data_split = get_features(pd.read_csv(data_splits[0], index_col=0))
     
-    if len(features_data['motif']) > 0:
-        logger.info("Reducing motif dimensions")
-        pca = PCA(n_components = 0.90, svd_solver = "full")
-        motif_data = pca.fit_transform(train_data[features_data['motif']].values)
     if not is_combined:
-        train_data = np.concatenate((train_data[features_data["kmer"]].values, motif_data), axis = 1)
+        train_data = train_data[features_data['kmer'] + features_data['motif'] + features_data['motif_present']].values
 
 
     torch.set_num_threads(num_process)
@@ -80,43 +75,44 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                         f"Error: training mode with several only used in single-sample binning!\n")
                     sys.exit(1)
 
-            train_data = data.values
-            train_data_split = data_split.values
+
+            if features_data["motif"]:
+                train_data_motif_is_present_matrix = data[features_data["motif_present"]].values
+                train_data_split_motif_is_present_matrix = data_split[features_data_split["motif_present"]].values
 
             if not is_combined:
-                if len(features_data["motif"]) == 0:
+                if not features_data["motif"]:
                     train_data = data[features_data['kmer']].values
                     train_data_split = data_split[features_data_split['kmer']].values
                 else:
-                    train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
-                    train_motifs_split_decorrelated = pca.transform(data_split[features_data["motif"]].values)
-
-                    train_data = np.concatenate((data[features_data["kmer"]].values, train_motifs_decorrelated), axis = 1)
-                    train_data_split = np.concatenate((data_split[features_data["kmer"]].values, train_motifs_split_decorrelated), axis = 1)
+                    train_data = data[features_data['kmer'] + features_data["motif"]].values
+                    train_data_split = data_split[features_data_split['kmer'] + features_data["motif"]].values
                     train_data, train_data_split = normalize_kmer_motif_features(train_data, train_data_split)
+
+                    train_data = np.concatenate((train_data, train_data_motif_is_present_matrix), axis = 1)
+                    train_data_split = np.concatenate((train_data_split, train_data_split_motif_is_present_matrix), axis = 1)
                     
                 
             else:
                 if norm_abundance(train_data, features_data):
-                    train_data_kmer  = data[features_data['kmer']].values
-                    train_data_split_kmer  = data_split[features_data_split['kmer']].values
-                    
-                    if len(features_data["motif"]) > 0:
-                        train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
-                        train_motifs_split_decorrelated = pca.transform(data_split[features_data["motif"]].values)
+                    if not features_data["motif"]:
+                        train_data_seq = data[features_data['kmer']].values
+                        train_data_split_seq = data_split[features_data_split['kmer']].values
+                    else:
+                        train_data_seq = data[features_data['kmer'] + features_data["motif"]].values
+                        train_data_split_seq = data_split[features_data_split['kmer'] + features_data["motif"]].values
+                        train_data_seq, train_data_split_seq = normalize_seq_motif_features(train_data_seq, train_data_split_seq)
 
-                        train_data_kmer, train_data_split_kmer = normalize_kmer_motif_features(train_data_kmer, train_data_split_kmer)
-
-                        train_data_kmer = np.concatenate((train_data_kmer, train_motifs_decorrelated), axis = 1)
-                        train_data_split_kmer = np.concatenate((train_data_split_kmer, train_motifs_split_decorrelated), axis = 1)
+                        train_data_seq = np.concatenate((train_data_seq, train_data_motif_is_present_matrix), axis = 1)
+                        train_data_split_seq = np.concatenate((train_data_split_seq, train_data_split_motif_is_present_matrix), axis = 1)
                     
                     train_data_depth = train_data[features_data['depth']].values
                     train_data_depth = normalize(train_data_depth, axis=1, norm='l1')
-                    train_data = np.concatenate((train_data_kmer, train_data_depth), axis=1)
+                    train_data = np.concatenate((train_data_seq, train_data_depth), axis=1)
 
                     train_data_split_depth = train_data_split[features_data_split['depth']].values
                     train_data_split_depth = normalize(train_data_split_depth, axis=1, norm='l1')
-                    train_data_split = np.concatenate((train_data_split_kmer, train_data_split_depth), axis = 1)
+                    train_data_split = np.concatenate((train_data_split_seq, train_data_split_depth), axis = 1)
 
             
             data_length = len(train_data)

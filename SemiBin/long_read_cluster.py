@@ -5,7 +5,6 @@ import polars as pl
 from .utils import cal_num_bins, get_marker, write_bins, normalize_kmer_motif_features
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import kneighbors_graph
-from sklearn.decomposition import PCA
 from collections import defaultdict
 from scipy.sparse import save_npz
 
@@ -56,32 +55,29 @@ def cluster_long_read(logger, model, data, device, is_combined,
     from .utils import norm_abundance
     contig_list = data.index.tolist()
 
-    if len(features_data['motif']) > 0:
-        pca = PCA(n_components = 0.90, svd_solver = "full")
-        pca.fit(data[features_data['motif']].values)
+    if features_data['motif']:
+        train_data_motif_present = data[features_data['motif_present']].values
     
     if not is_combined:
-        if len(features_data["motif"]) == 0:
+        if not features_data["motif"]:
             train_data_input = data.values[:, features_data["kmer"]]
 
         else:
-            train_motifs_decorrelated = pca.transform(data[features_data["motif"]].values)
-            train_data_input = np.concatenate((data[features_data["kmer"]].values, train_motifs_decorrelated), axis = 1)
-
+            train_data_input = data[features_data["kmer"] + features_data["motif"]].values
             train_data_input, _ = normalize_kmer_motif_features(train_data_input, train_data_input)
+            train_data_input = np.concatenate((train_data_input, train_data_motif_present), axis = 1)
     else:
         train_data_input = data
         if norm_abundance(train_data_input, features_data):
-            train_data_kmer = train_data_input[features_data["kmer"]].values
-            if len(features_data["motif"]) > 0:
-                train_motifs_decorrelated = pca.transform(train_data_input[features_data["motif"]].values)
-                train_data_kmer, _ = normalize_kmer_motif_features(train_data_kmer, train_data_kmer)
-                train_data_kmer = np.concatenate((train_data_kmer, train_motifs_decorrelated), axis = 1)
+            train_data_seq = train_data_input[features_data["kmer"] + features_data["motif"]].values
+            if features_data["motif"]:
+                train_data_seq, _ = normalize_kmer_motif_features(train_data_seq, train_data_seq)
+                train_data_seq = np.concatenate((train_data_seq, train_data_motif_present), axis = 1)
             
             train_data_depth = train_data_input[features_data["depth"]].values
             from sklearn.preprocessing import normalize
             train_data_depth = normalize(train_data_depth, axis=1, norm='l1')
-            train_data_input = np.concatenate((train_data_kmer, train_data_depth), axis=1)
+            train_data_input = np.concatenate((train_data_seq, train_data_depth), axis=1)
 
     with torch.no_grad():
         model.eval()
