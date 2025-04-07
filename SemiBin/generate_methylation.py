@@ -1,16 +1,12 @@
 #!/usr/bin/env python
 
-import numpy as np
-from multiprocessing import get_context
-import multiprocessing
+from .utils import get_features
 from pymethylation_utils.utils import run_epimetheus
 import os
 import sys
 import gzip
 from Bio import SeqIO
-from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-import re
 
 
 # os.environ['POLARS_MAX_THREADS'] = str(args.num_process)
@@ -20,18 +16,18 @@ import polars as pl
 def read_fasta(path):
     # Check if the file exists
     if not os.path.exists(path):
-        raise FileNotFoundError(f"File not found: {path}")    
-    
+        raise FileNotFoundError(f"File not found: {path}")
+
     # Check if the file has a valid FASTA extension
     valid_extensions = ['.fasta', '.fa', '.fna', '.gz']
     if not any(path.endswith(ext) for ext in valid_extensions):
         raise ValueError(f"Unsupported file extension. Please provide a FASTA file with one of the following extensions: {', '.join(valid_extensions)}")
-    
+
     # Check if the file is a gzipped FASTA file
     if path.endswith('.gz'):
         with gzip.open(path, "rt") as handle:  # "rt" mode for reading as text
             contigs = SeqIO.to_dict(SeqIO.parse(handle, "fasta"))
-                    
+
     else:
         # Read a regular (uncompressed) FASTA file
         with open(path, "r") as handle:
@@ -46,7 +42,7 @@ def get_split_contig_lengths(assembly, split_contigs):
         contig_lengths[contig.id] = contig_len
 
     return contig_lengths
-    
+
 
 def create_assembly_with_split_contigs(assembly, contig_lengths, output):
     split_records = []
@@ -268,6 +264,7 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     data_split = data_split\
         .rename({"": "contig"})
     
+    is_combined = bool(get_features(data)["depth"])
     
     # Load the assembly file
     assembly = read_fasta(contig_fasta_path)
@@ -377,10 +374,12 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     data_cols_filtered = [col for col in data_cols_filtered if not "var" in col]
     assert data_split_cols == data_cols_filtered, "data.csv and data_split.csv columns does not match after methylation addition"
     
+    ext = "_cov" if is_combined else ""
+
     try:
         logger.info("Writing to data and data_split files...")
-        data_split.write_csv(os.path.join(args.output, "data_split.csv"), separator=",", quote_style='never') 
-        data.write_csv(os.path.join(args.output, "data.csv"), separator=",", quote_style='never')
+        data_split.write_csv(os.path.join(args.output, f"data_split{ext}.csv"), separator=",", quote_style='never') 
+        data.write_csv(os.path.join(args.output, f"data{ext}.csv"), separator=",", quote_style='never')
     except Exception as e:
         print(f"An error occurred while writing the output: {e}")
         sys.exit(1)
@@ -417,16 +416,23 @@ def generate_methylation_features_multi(
     if missing_samples:
         raise ValueError(f"Missing pileup files for samples: {', '.join(missing_samples)}")
 
+    is_combined = len(sample_list) >= 5
+    
     for sample in sample_list:
         logger.info(f"Finding methylation pattern of: {sample}")
         run_args = copy.copy(args)
         run_args.output = os.path.join(args.output, "samples", sample)
+
+        if is_combined:
+            ext = "_cov"
+        else:
+            ext = ""
         generate_methylation_features(
             logger = logger,
             contig_fasta_path = os.path.join(args.output, "samples", f"{sample}.fa"),
             pileup_path = pileup_dict[sample],
             args = run_args,
-            data_path = os.path.join(run_args.output, "data.csv"),
-            data_split_path = os.path.join(run_args.output, "data_split.csv")
+            data_path = os.path.join(run_args.output, f"data{ext}.csv"),
+            data_split_path = os.path.join(run_args.output, f"data_split{ext}.csv")
         )
 
