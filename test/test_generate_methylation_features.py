@@ -63,7 +63,14 @@ def test_generate_methylation_features(data):
     args = SetupArgs()
 
     data_before = pl.read_csv(args.data)
-    generate_methylation_features(logger, args)
+    generate_methylation_features(
+        logger = logger,
+        contig_fasta_path=args.contig_fasta,
+        pileup_path=args.pileup,
+        args = args,
+        data_path=args.data,
+        data_split_path=args.data_split
+    )
 
     assert os.path.exists(os.path.join(args.output, "data.csv"))
     assert os.path.exists(os.path.join(args.output, "contig_methylation.tsv"))
