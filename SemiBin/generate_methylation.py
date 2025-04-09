@@ -264,8 +264,10 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     data_split = data_split\
         .rename({"": "contig"})
     
-    is_combined = bool(get_features(data)["depth"])
-    
+    # is_combined = True when there are 5 or more samples.
+    # In the data.csv file that would mean there are 10 depth columns (mean + var for each sample)
+    is_combined = bool(len(get_features(data)["depth"]) >= 10)     
+
     # Load the assembly file
     assembly = read_fasta(contig_fasta_path)
 
