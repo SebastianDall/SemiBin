@@ -48,7 +48,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
     logger.info('Training model...')
     
     if not is_combined:
-        model = Semi_encoding_single(train_data.shape[1])
+        model = Semi_encoding_single(kmer_dim = len(features_data['kmer']), meth_dim = len(features_data['motif']))
     else:
         model = Semi_encoding_multiple(train_data.shape[1])
 
@@ -61,6 +61,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
     torch.manual_seed(0)
     np.random.seed(0)
     
+    loss_list = []
     for epoch in tqdm(range(epoches)):
         for data_index, (datapath, data_split_path) in enumerate(zip(datapaths, data_splits)):
             if epoch == 0:
@@ -76,9 +77,9 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                     sys.exit(1)
 
 
-            if features_data["motif"]:
-                train_data_motif_is_present_matrix = data[features_data["motif_present"]].values
-                train_data_split_motif_is_present_matrix = data_split[features_data_split["motif_present"]].values
+            # if features_data["motif"]:
+            #     train_data_motif_is_present_matrix = data[features_data["motif_present"]].values
+            #     train_data_split_motif_is_present_matrix = data_split[features_data_split["motif_present"]].values
 
             if not is_combined:
                 if not features_data["motif"]:
@@ -89,8 +90,8 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                     train_data_split = data_split[features_data_split['kmer'] + features_data["motif"]].values
                     train_data, train_data_split = normalize_kmer_motif_features(train_data, train_data_split)
 
-                    train_data = np.concatenate((train_data, train_data_motif_is_present_matrix), axis = 1)
-                    train_data_split = np.concatenate((train_data_split, train_data_split_motif_is_present_matrix), axis = 1)
+                    # train_data = np.concatenate((train_data, train_data_motif_is_present_matrix), axis = 1)
+                    # train_data_split = np.concatenate((train_data_split, train_data_split_motif_is_present_matrix), axis = 1)
                     
                 
             else:
@@ -103,8 +104,8 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                         train_data_split_seq = data_split[features_data_split['kmer'] + features_data["motif"]].values
                         train_data_seq, train_data_split_seq = normalize_seq_motif_features(train_data_seq, train_data_split_seq)
 
-                        train_data_seq = np.concatenate((train_data_seq, train_data_motif_is_present_matrix), axis = 1)
-                        train_data_split_seq = np.concatenate((train_data_split_seq, train_data_split_motif_is_present_matrix), axis = 1)
+                        # train_data_seq = np.concatenate((train_data_seq, train_data_motif_is_present_matrix), axis = 1)
+                        # train_data_split_seq = np.concatenate((train_data_split_seq, train_data_split_motif_is_present_matrix), axis = 1)
                     
                     train_data_depth = train_data[features_data['depth']].values
                     train_data_depth = normalize(train_data_depth, axis=1, norm='l1')
@@ -149,6 +150,7 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                 num_workers=0,
                 drop_last=True)
 
+            current_avg_batch_loss = 0
             for train_input1, train_input2, train_label in train_loader:
                 model.train()
                 train_input1 = train_input1.to(device=device, dtype=torch.float32)
@@ -162,9 +164,19 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                 supervised_loss = supervised_loss.to(device)
                 supervised_loss.backward()
                 optimizer.step()
+
+                current_avg_batch_loss += supervised_loss.item()
+
+
+            current_avg_batch_loss /= len(train_loader)
         scheduler.step()
 
     logger.info('Training finished.')
     torch.save(model, out)
+
+    loss_file = os.path.join(os.path.dirname(out), 'losses.txt')
+    with open(loss_file, 'w') as f:
+        for epoch, loss in enumerate(loss_list):
+            f.write(f"{epoch+1} {loss}\n")
 
     return model
