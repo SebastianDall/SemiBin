@@ -149,6 +149,8 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                 num_workers=0,
                 drop_last=True)
 
+            epoch_loss = 0
+            num_batches = 0
             for train_input1, train_input2, train_label in train_loader:
                 model.train()
                 train_input1 = train_input1.to(device=device, dtype=torch.float32)
@@ -162,6 +164,12 @@ def train_self(logger, out : str, datapaths, data_splits, is_combined=True,
                 supervised_loss = supervised_loss.to(device)
                 supervised_loss.backward()
                 optimizer.step()
+
+                epoch_loss += supervised_loss.item()
+                num_batches += 1
+
+            avg_loss = epoch_loss / num_batches
+            logger.info(f"Epoch {epoch+1}, Data Index {data_index}: Average Loss = {avg_loss:.4f}")
         scheduler.step()
 
     logger.info('Training finished.')
