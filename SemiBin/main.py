@@ -1204,7 +1204,7 @@ def binning_preprocess(data, depth_metabat2, model_path, environment, device):
             sys.exit(1)
 
     if device == torch.device('cpu'):
-        model = torch.load(model_path, map_location=torch.device('cpu'))
+        model = torch.load(model_path, map_location=torch.device('cpu'), weights_only=False)
     else:
         model = torch.load(model_path).to(device)
 
