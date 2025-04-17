@@ -442,6 +442,8 @@ def cal_num_bins(fasta_path, binned_length, num_process, multi_mode=False, outpu
         else:
             target_dir = tdir
 
+
+        # :TODO
         contig_output = run_orffinder(fasta_path, num_process, tdir, orf_finder, prodigal_output_faa=prodigal_output_faa)
 
         hmm_output = os.path.join(target_dir, 'markers.hmmout')

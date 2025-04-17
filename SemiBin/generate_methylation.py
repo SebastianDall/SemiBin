@@ -76,7 +76,7 @@ def create_assembly_with_split_contigs(assembly, contig_lengths, output):
 
 def create_split_pileup(
     pileup_path: str,
-    contig_lengths: dict[str, int],
+    contig_lengths,
     output_path: str
 ):
     """

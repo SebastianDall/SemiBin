@@ -1204,7 +1204,7 @@ def binning_preprocess(data, depth_metabat2, model_path, environment, device):
             sys.exit(1)
 
     if device == torch.device('cpu'):
-        model = torch.load(model_path, map_location=torch.device('cpu'), weights_only=False)
+        model = torch.load(model_path, map_location=torch.device('cpu'),)
     else:
         model = torch.load(model_path).to(device)
 
@@ -1637,6 +1637,7 @@ def main2(args=None, is_semibin2=True, with_methylation=False):
                     device=device, args=args)
 
         elif args.cmd == 'bin_long':
+
             binning_long(logger, args.data, args.minfasta_kb * 1000,
                     binned_length, environment=args.environment,
                     contig_dict=contig_dict, model_path=args.model_path,
