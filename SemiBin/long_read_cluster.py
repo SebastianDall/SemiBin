@@ -60,7 +60,7 @@ def cluster_long_read(logger, model, data, device, is_combined,
     
     if not is_combined:
         if not features_data["motif"]:
-            train_data_input = data.values[:, features_data["kmer"]]
+            train_data_input = data[features_data["kmer"]].values
 
         else:
             train_data_input = data[features_data["kmer"] + features_data["motif"]].values
