@@ -3,7 +3,8 @@
 import numpy as np
 from multiprocessing import get_context
 import multiprocessing
-from pymethylation_utils.utils import run_epimetheus
+# from pymethylation_utils.utils import run_epimetheus
+from epymetheus import epymetheus
 import os
 import sys
 import gzip
@@ -11,11 +12,61 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import re
-
-
-# os.environ['POLARS_MAX_THREADS'] = str(args.num_process)
 import polars as pl
 
+# BUG: Removes abundance columns!
+# def filter_motifs_by_prevalence(
+#     data: pl.DataFrame,
+#     data_split: pl.DataFrame,
+#     threshold: float = 0.85,
+#     present_prefix: str = "motif_present_",
+#     median_prefix: str = "median_",
+# ) -> tuple[pl.DataFrame, pl.DataFrame]:
+#     """
+#     Remove motifs that are not present in at least `threshold` proportion
+#     of contigs (measured on *data*) and drop the matching columns in both
+#     data frames, keeping them perfectly in sync.
+#     """
+#     # 1 ─────────────────────────────────────────────────────────────────────
+#     present_cols = [c for c in data.columns if c.startswith(present_prefix)]
+#     if not present_cols:
+#         raise ValueError("No motif_present_* columns found in ‘data’.")
+
+#     n_contigs = data.height
+#     motifs_to_drop = [
+#         c[len(present_prefix):]
+#         for c in present_cols
+#         if (data[c].sum() / n_contigs) < threshold
+#     ]
+#     if not motifs_to_drop:
+#         return data, data_split    # nothing to do
+
+#     # 2 ─────────────────────────────────────────────────────────────────────
+#     # build the raw candidate list only once
+#     candidate_cols = set()
+#     for m in motifs_to_drop:
+#         candidate_cols.update(
+#             {f"{present_prefix}{m}", f"{median_prefix}{m}"}
+#         )
+
+#     # columns that actually exist in each frame
+#     drop_in_data        = [c for c in candidate_cols if c in data.columns]
+#     drop_in_data_split  = [c for c in candidate_cols if c in data_split.columns]
+
+#     data_f       = data.drop(drop_in_data)
+#     data_split_f = data_split.drop(drop_in_data_split)
+
+#     # 3 ─────────────────────────────────────────────────────────────────────
+#     common_cols = [c for c in data.columns if c in data_split.columns and c not in candidate_cols]
+#     # (the comprehension preserves the original order)
+
+#     data_f       = data_f.select(common_cols)
+#     data_split_f = data_split_f.select(common_cols)
+
+#     # final guard
+#     assert data_f.columns == data_split_f.columns
+
+#     return data_f, data_split_f
 
 def read_fasta(path):
     # Check if the file exists
@@ -289,30 +340,31 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     logger.info(f"Motifs found (#{number_of_motifs}): {motifs}")
 
     # Run methylation utils
-    code = run_epimetheus(
-        pileup_path,
-        contig_fasta_path,
-        motifs,
-        args.num_process,
-        args.min_valid_read_coverage,
-        os.path.join(args.output,"contig_methylation.tsv")
+    logger.info("Running epimetheus for whole contigs")
+    epymetheus.methylation_pattern(
+        pileup = pileup_path,
+        assembly = contig_fasta_path,
+        output = os.path.join(args.output,"contig_methylation.tsv"),
+        motifs = motifs,
+        threads = args.num_process,
+        min_valid_read_coverage = args.min_valid_read_coverage,
+        batch_size = 1000,
+        min_valid_cov_to_diff_fraction = 0.80,
+        allow_assembly_pilup_mismatch = False,
     )
-    if code != 0:
-        logger.error("Error running methylation_utils for all contigs")
-        sys.exit(1)
-
     
-    code = run_epimetheus(
-        os.path.join(args.output, "pileup_split.bed"),
-        os.path.join(args.output, "contig_split.fasta"),
-        motifs,
-        args.num_process,
-        args.min_valid_read_coverage,
-        os.path.join(args.output,"contig_split_methylation.tsv")
+    logger.info("Running epimetheus for split contigs")
+    epymetheus.methylation_pattern(
+        pileup = os.path.join(args.output, "pileup_split.bed"),
+        assembly = os.path.join(args.output, "contig_split.fasta"),
+        output = os.path.join(args.output,"contig_split_methylation.tsv"),
+        motifs = motifs,
+        threads = args.num_process,
+        min_valid_read_coverage = args.min_valid_read_coverage,
+        batch_size = 1000,
+        min_valid_cov_to_diff_fraction = 0.80,
+        allow_assembly_pilup_mismatch = False,
     )
-    if code != 0:
-        logger.error("Error running methylation_utils for split contigs")
-        sys.exit(1)
 
     schema = {
         'contig': pl.String(),
@@ -370,12 +422,11 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
  
     assert data_split_methylation_matrix.columns == data_methylation_matrix.columns, "methylation columns does not match between data_split_methylation_matrix and data_methylation_matrix"
 
-    data_split_cols = data_split.columns
-    data_cols = data.columns
-
-    data_cols_filtered = [col for col in data_cols if not "mean" in col]
-    data_cols_filtered = [col for col in data_cols_filtered if not "var" in col]
-    assert data_split_cols == data_cols_filtered, "data.csv and data_split.csv columns does not match after methylation addition"
+    # data, data_split = filter_motifs_by_prevalence(
+    #     data,
+    #     data_split,
+    #     threshold = 0.85
+    # )
     
     try:
         logger.info("Writing to data and data_split files...")
