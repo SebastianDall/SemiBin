@@ -2,13 +2,14 @@ import os
 import torch
 import numpy as np
 import polars as pl
-from .utils import cal_num_bins, get_marker, write_bins, normalize_kmer_motif_features
-from sklearn.cluster import DBSCAN
+from .utils import write_bins, normalize_kmer_motif_features
+from .markers import estimate_seeds, get_marker
+from sklearn.cluster import dbscan
 from sklearn.neighbors import kneighbors_graph
 from collections import defaultdict
 from scipy.sparse import save_npz
 
-def get_best_bin(results_dict, contig_to_marker, namelist, contig_dict, minfasta):
+def get_best_bin(results, contig_to_marker, namelist, contig_dict, minfasta):
 
     # There is room for improving the loop below to avoid repeated computation
     # but it runs very fast in any case
@@ -17,7 +18,7 @@ def get_best_bin(results_dict, contig_to_marker, namelist, contig_dict, minfasta
         weight_of_max = 1e9
         max_bin = None
 
-        for res_labels in results_dict.values():
+        for res_labels in results:
             res = defaultdict(list)
             for label, name in zip(res_labels, namelist):
                 if label != -1:
@@ -67,8 +68,8 @@ def cluster_long_read(logger, model, data, device, is_combined,
             train_data_input, _ = normalize_kmer_motif_features(train_data_input, train_data_input)
             train_data_input = np.concatenate((train_data_input, train_data_motif_present), axis = 1)
     else:
-        train_data_input = data
-        if norm_abundance(train_data_input, features_data):
+        train_data_input = data.values
+        if norm_abundance(data, features_data):
             train_data_seq = train_data_input[features_data["kmer"] + features_data["motif"]].values
             if features_data["motif"]:
                 train_data_seq, _ = normalize_kmer_motif_features(train_data_seq, train_data_seq)
@@ -110,7 +111,8 @@ def cluster_long_read(logger, model, data, device, is_combined,
         with open(cfasta, 'wt') as concat_out:
             for h in contig_list:
                 concat_out.write(f'>{h}\n{contig_dict[h]}\n')
-            seeds = cal_num_bins(
+            #  This is needed to create the markers.hmmout file
+            estimate_seeds(
                 cfasta,
                 binned_length,
                 args.num_process,
@@ -134,21 +136,21 @@ def cluster_long_read(logger, model, data, device, is_combined,
     # Save distance matrix
     save_npz(os.path.join(out, "dist_matrix.npz"), dist_matrix)
     
-    DBSCAN_results_dict = {}
-    eps_values = [0.01] + [round(x, 2) for x in np.arange(0.05, 0.6, 0.05)]
+    dbscan_results = []
+    eps_values = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55]
     for eps_value in eps_values:
-        dbscan = DBSCAN(eps=eps_value, min_samples=5, n_jobs=args.num_process, metric='precomputed')
-        dbscan.fit(dist_matrix, sample_weight=length_weight)
-        labels = dbscan.labels_
-        DBSCAN_results_dict[eps_value] = labels.tolist()
+        _, labels = dbscan(dist_matrix,
+                eps=eps_value, min_samples=5, n_jobs=args.num_process, metric='precomputed',
+                sample_weight=length_weight)
+        dbscan_results.append(labels.tolist())
 
     
     # Prepare DataFrame for saving results
     results_df = pd.DataFrame({'Contig': contig_list})
 
     # Add cluster labels for each eps value to the DataFrame
-    for eps_value in eps_values:
-        results_df[f'Cluster_Label_eps_{eps_value}'] = DBSCAN_results_dict[eps_value]
+    for i, eps_value in enumerate(eps_values):
+        results_df[f'Cluster_Label_eps_{eps_value}'] = dbscan_results[i]
 
     # Save results to CSV
     results_df.to_csv(os.path.join(out,'dbscan_results_multiple_eps.csv'), index=False)
@@ -157,16 +159,12 @@ def cluster_long_read(logger, model, data, device, is_combined,
     logger.debug('Integrating results.')
 
     extracted = []
-    initial_cluster_dict = {k: v for k, v in DBSCAN_results_dict.items() if 0.01 <= k <= 0.55}
-    # while the sum of contigs is higher than the smallest bin allowed continue to find bins
     while sum(len(contig_dict[contig]) for contig in contig_list) >= minfasta:
         # If there is only one contig left, add it to the extracted list
         if len(contig_list) == 1:
             extracted.append(contig_list)
             break
-        
-        
-        max_bin = get_best_bin(initial_cluster_dict,
+        max_bin = get_best_bin(dbscan_results,
                                 contig2marker,
                                 contig_list,
                                 contig_dict,
@@ -175,13 +173,12 @@ def cluster_long_read(logger, model, data, device, is_combined,
             break
 
         extracted.append(max_bin)
-        for temp in max_bin:
-            temp_index = contig_list.index(temp)
-            contig_list.pop(temp_index)
-            for eps_value in DBSCAN_results_dict:
-                DBSCAN_results_dict[eps_value].pop(temp_index)
-        
-        
+        for clustered in max_bin:
+            ix = contig_list.index(clustered)
+            contig_list.pop(ix)
+            for r in dbscan_results:
+                r.pop(ix)
+
     contig2ix = {}
     for i, cs in enumerate(extracted):
         for c in cs:
