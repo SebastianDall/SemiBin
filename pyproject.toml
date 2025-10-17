@@ -47,6 +47,7 @@ dev = ['pytest', 'hypothesis<=6.112.1']
 
 [project.scripts]
 SemiBin2 = "SemiBin.main:main2"
+MethylBin = "SemiBin.main:main3"
 
 [tool.setuptools]
 packages = ["SemiBin"]
