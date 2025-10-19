@@ -345,9 +345,6 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     contig_methylation = contig_methylation.filter((pl.col("n_motif_obs") >= args.min_motif_observations) & (pl.col("mean_read_cov") >= args.min_valid_read_coverage))
     contig_split_methylation = contig_split_methylation.filter((pl.col("n_motif_obs") >= args.min_motif_observations) & (pl.col("mean_read_cov") >= args.min_valid_read_coverage))
 
-    print(contig_split_methylation)
-    print(contig_methylation)
-    
     data_split_methylation_matrix = create_methylation_matrix(
         methylation_features = contig_split_methylation
     )
@@ -365,7 +362,6 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     data_methylation_matrix = create_methylation_matrix(
         methylation_features=contig_methylation
     ).select(data_split_methylation_matrix.columns)
-    print(data_methylation_matrix)
     
     data = data\
         .join(
@@ -381,12 +377,10 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
 
     try:
         logger.info("Writing to data and data_split files...")
-        print(data.columns)
-        print("Saving new data files")
         data_split.write_csv(os.path.join(args.output, "data_split.csv"), separator=",", quote_style='never') 
         data.write_csv(os.path.join(args.output, "data.csv"), separator=",", quote_style='never')
     except Exception as e:
-        print(f"An error occurred while writing the output: {e}")
+        logger.error(f"An error occurred while writing the output: {e}")
         sys.exit(1)
     
     
