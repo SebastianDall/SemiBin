@@ -36,7 +36,7 @@ dependencies = [
     "scikit-learn",
     "requests",
     "numexpr",
-    "epimetheus-py",
+    "epimetheus-py==0.7.6",
     "polars",
     "Bio",
 ]
