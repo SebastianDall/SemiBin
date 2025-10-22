@@ -22,6 +22,7 @@ class SetupArgs:
         self.num_process = 1
         self.min_valid_read_coverage= 1
         self.min_motif_observations=3
+        self.methylation_value = epymetheus.MethylationOutput.Median
         self.output = "test/methylation_data/test_output"
 
 @pytest.fixture
@@ -97,7 +98,8 @@ def test_split_contigs(tmp_path, data):
         motifs=motifs,
         threads=1,
         min_valid_read_coverage=3,
-        min_valid_cov_to_diff_fraction=0.8
+        min_valid_cov_to_diff_fraction=0.8,
+        methylation_value=epymetheus.MethylationOutput.Median
     )
 
     current_output = current_output.to_pandas()

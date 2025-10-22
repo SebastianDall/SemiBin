@@ -1,4 +1,5 @@
 import argparse
+from epymetheus.epymetheus import MethylationOutput
 import logging
 import os
 from os import path
@@ -355,6 +356,7 @@ def parse_args(args, with_methylation):
 
                 p.add_argument("--min-valid-read-coverage", help="Minimum number of valid read observations for a motif in a contig (Default: 8).", default=8, type=int)
                 p.add_argument("--min-motif-observations", help="Minimum number of motif observations on a contig (Default: 4).", default=4, type=int)
+                p.add_argument("--methylation-value", help="Methylation is either calculated as mean read methylation weighted by coverage [weighted-mean] or median of mean read methylation across motif observations [median] (default: median)", default="median")
 
             if p in [generate_methylation_features_single, single_easy_bin]:
                 m.add_argument("--pileup", help = "Path to the pileup file", required = True)
@@ -1471,6 +1473,16 @@ def main2(raw_args=None, is_semibin2=True, with_methylation=False):
     if raw_args is None:
         raw_args = sys.argv[1:]
     args = parse_args(raw_args, with_methylation)
+
+    if with_methylation:
+        if args.methylation_value == "median":
+            args.methylation_value = MethylationOutput.Median
+        elif args.methylation_value == "weighted-mean":
+            args.methylation_value = MethylationOutput.WeightedMean
+        else:
+            logger.error("Methylation value required. Must be either 'median' or 'weighted-mean'")
+            sys.exit(1)
+            
 
     if with_methylation and args.cmd in ["single_easy_bin", "multi_easy_bin"]:
         args.sequencing_type = 'long_read'

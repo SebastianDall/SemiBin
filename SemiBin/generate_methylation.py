@@ -52,7 +52,9 @@ def process_contig_split_methylation(
     motifs,
     min_valid_read_coverage,
     min_valid_cov_to_diff_fraction,
+    methylation_value,
 ):
+
     try:
         pileup_df = epymetheus.query_pileup_records(
             pileup_path=pileup_path,
@@ -74,7 +76,7 @@ def process_contig_split_methylation(
         pileup_df=pileup_split_df,
         assembly=assembly_path,
         motifs = motifs,
-        output_type=epymetheus.MethylationOutput.Median,
+        output_type=methylation_value,
         threads=1,
         min_valid_read_coverage=min_valid_read_coverage,
         min_valid_cov_to_diff_fraction=min_valid_cov_to_diff_fraction
@@ -92,7 +94,9 @@ def find_data_split_methylation_parallel(
     threads,
     min_valid_read_coverage,
     min_valid_cov_to_diff_fraction,
+    methylation_value
 ):
+
     ctx = multiprocessing.get_context("spawn")
     with ctx.Pool(threads) as pool:
         results = pool.starmap(
@@ -104,7 +108,8 @@ def find_data_split_methylation_parallel(
                 assembly_path,
                 motifs,
                 min_valid_read_coverage,
-                min_valid_cov_to_diff_fraction
+                min_valid_cov_to_diff_fraction,
+                methylation_value
             ) for contig in contigs]
         )
 
@@ -298,7 +303,7 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
         # batch_size = 1000,
         min_valid_cov_to_diff_fraction = 0.80,
         allow_assembly_pileup_mismatch = False,
-        output_type=epymetheus.MethylationOutput.Median
+        output_type=args.methylation_value
     )
 
     contig_methylation.write_csv(
@@ -315,7 +320,8 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
         motifs =motifs,
         min_valid_read_coverage=args.min_valid_read_coverage,
         min_valid_cov_to_diff_fraction=0.80,
-        threads=args.num_process
+        threads=args.num_process,
+        methylation_value = args.methylation_value
     )
 
     if contig_split_methylation.is_empty():
