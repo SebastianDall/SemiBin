@@ -1518,7 +1518,8 @@ def main2(raw_args=None, is_semibin2=True, with_methylation=False):
         fh = logging.FileHandler(os.path.join(args.output, "SemiBinRun.log"))
         fh.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s'))
         logger.addHandler(fh)
-    logger.info(f'Running SemiBin2 version {__version__}')
+    start_sequence = f'Running SemiBin2 version {__version__}' if not with_methylation else f'Running MethylBin version {__version__}'
+    logger.info(start_sequence)
     logger.debug(f'Starting SemiBin2 with arguments: {raw_args}')
     logger.debug(f'Parsed arguments as: {args}')
 
