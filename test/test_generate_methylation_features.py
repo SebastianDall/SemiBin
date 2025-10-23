@@ -22,7 +22,7 @@ class SetupArgs:
         self.num_process = 1
         self.min_valid_read_coverage= 1
         self.min_motif_observations=3
-        self.methylation_value = epymetheus.MethylationOutput.Median
+        self.methylation_value = "median"
         self.output = "test/methylation_data/test_output"
 
 @pytest.fixture
