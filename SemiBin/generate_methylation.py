@@ -302,7 +302,7 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
         min_valid_read_coverage = args.min_valid_read_coverage,
         # batch_size = 1000,
         min_valid_cov_to_diff_fraction = 0.80,
-        allow_assembly_pileup_mismatch = False,
+        allow_assembly_pileup_mismatch = True,
         output_type=args.methylation_value
     )
 
