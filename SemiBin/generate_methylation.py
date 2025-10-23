@@ -305,7 +305,6 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     contig_methylation = epymetheus.methylation_pattern(
         pileup = pileup_path,
         assembly = contig_fasta_path,
-        output = os.path.join(args.output,"contig_methylation.tsv"),
         motifs = motifs,
         threads = args.num_process,
         min_valid_read_coverage = args.min_valid_read_coverage,
