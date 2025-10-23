@@ -829,7 +829,7 @@ def predict_taxonomy(logger, contig_fasta, cannot_name,
 
 def generate_sequence_features_single(logger, contig_fasta,
                          bams, binned_length,
-                         must_link_threshold, num_process, output, abundances, only_kmer=False):
+                         must_link_threshold, num_process, output, abundances, only_kmer=False, length_threshold=1000):
     """
     Generate data.csv and data_split.csv for training and clustering of single-sample and co-assembly binning mode.
     data.csv has the features(kmer and abundance) for original contigs.
@@ -855,7 +855,7 @@ def generate_sequence_features_single(logger, contig_fasta,
         return
 
     kmer_split = generate_kmer_features_from_fasta(
-        contig_fasta, 1000, 4, split=True, split_threshold=must_link_threshold)
+        contig_fasta, length_threshold, 4, split=True, split_threshold=must_link_threshold)
 
     if bams:
         is_combined = len(bams) >= 5
@@ -1278,6 +1278,8 @@ def single_easy_binning(logger, args, binned_length,
             f"Error: You need to use our provided model if you provide depth file from Metabat2.\n")
         sys.exit(1)
 
+    length_threshold = 20000 if with_methylation else 1000
+
     generate_sequence_features_single(
         logger,
         args.contig_fasta,
@@ -1287,7 +1289,9 @@ def single_easy_binning(logger, args, binned_length,
         args.num_process,
         args.output,
         args.abundances,
-        only_kmer=args.depth_metabat2)
+        only_kmer=args.depth_metabat2,
+        length_threshold=length_threshold,
+    )
     
     if with_methylation:
         generate_methylation_features(
@@ -1473,16 +1477,6 @@ def main2(raw_args=None, is_semibin2=True, with_methylation=False):
     if raw_args is None:
         raw_args = sys.argv[1:]
     args = parse_args(raw_args, with_methylation)
-
-    if with_methylation:
-        if args.methylation_value == "median":
-            args.methylation_value = MethylationOutput.Median
-        elif args.methylation_value == "weighted-mean":
-            args.methylation_value = MethylationOutput.WeightedMean
-        else:
-            logger.error("Methylation value required. Must be either 'median' or 'weighted-mean'")
-            sys.exit(1)
-            
 
     if with_methylation and args.cmd in ["single_easy_bin", "multi_easy_bin"]:
         args.sequencing_type = 'long_read'

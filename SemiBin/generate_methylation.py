@@ -233,6 +233,16 @@ def check_data_file_args(logger, data, data_split, args):
 
 def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, data_path = None, data_split_path = None):
     logger.info("Adding Methylation Features")
+
+    if with_methylation:
+        if args.methylation_value == "median":
+            args.methylation_value = MethylationOutput.Median
+        elif args.methylation_value == "weighted-mean":
+            args.methylation_value = MethylationOutput.WeightedMean
+        else:
+            logger.error("Methylation value required. Must be either 'median' or 'weighted-mean'")
+            sys.exit(1)
+            
     logger.info("Loading data...")
     
     # Check for the data and data_split file
