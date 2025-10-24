@@ -216,6 +216,56 @@ def create_methylation_matrix(methylation_features):
     
     return matrix
 
+def filter_must_links(data_split, max_distance):
+    import numpy as np
+
+    # Get methylation feature columns
+    methylation_cols = [col for col in data_split.columns if col.startswith("methylation_value")]
+
+    if not methylation_cols:
+        return data_split
+
+    # Extract base contig names (remove _1 or _2 suffix)
+    data_with_base = data_split.with_columns([
+        pl.col("").str.slice(0, pl.col("").str.len_chars() - 2).alias("base_contig"),
+        pl.col("").str.slice(-1, 1).alias("split_num")
+    ])
+
+    # Get pairs where both _1 and _2 exist
+    contig_counts = data_with_base.group_by("base_contig").len()
+    complete_pairs = contig_counts.filter(pl.col("len") == 2)["base_contig"]
+
+    # Filter to only complete pairs
+    paired_data = data_with_base.filter(pl.col("base_contig").is_in(complete_pairs))
+
+    # Separate _1 and _2 contigs
+    contigs_1 = paired_data.filter(pl.col("split_num") == "1").select(["base_contig"] + methylation_cols)
+    contigs_2 = paired_data.filter(pl.col("split_num") == "2").select(["base_contig"] + methylation_cols)
+
+    # Join to get pairs
+    pairs = contigs_1.join(contigs_2, on="base_contig", suffix="_2")
+
+    # Calculate euclidean distance for each pair
+    distances = []
+    for row in pairs.iter_rows(named=True):
+        vals_1 = np.array([row[col] for col in methylation_cols])
+        vals_2 = np.array([row[col + "_2"] for col in methylation_cols])
+        distance = np.linalg.norm(vals_1 - vals_2)
+        distances.append(distance)
+
+    # Add distances to pairs dataframe
+    pairs_with_distance = pairs.with_columns(pl.Series("euclidean_distance", distances))
+
+    # Filter pairs with distance <= max_distance
+    valid_pairs = pairs_with_distance.filter(pl.col("euclidean_distance") <= max_distance)["base_contig"]
+
+    # Return original data filtered to valid pairs
+    return data_split.filter(
+        pl.col("").str.slice(0, pl.col("").str.len_chars() - 2).is_in(valid_pairs)
+    )
+
+    
+
 
 
 def check_data_file_args(logger, data, data_split, args):
@@ -373,6 +423,8 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
         .fill_nan(0.0)\
         .fill_null(0.0)
         
+    data_split = filter_must_links(data_split, 1)
+    
     data_methylation_matrix = create_methylation_matrix(
         methylation_features=contig_methylation
     ).select(data_split_methylation_matrix.columns)
