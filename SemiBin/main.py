@@ -1614,6 +1614,7 @@ def main2(raw_args=None, is_semibin2=True, with_methylation=False):
                 output=args.output)
 
         elif args.cmd == 'generate_sequence_features_single':
+            length_threshold = 20000 if with_methylation else 1000
             generate_sequence_features_single(
                 logger,
                 args.contig_fasta,
@@ -1623,7 +1624,9 @@ def main2(raw_args=None, is_semibin2=True, with_methylation=False):
                 args.num_process,
                 args.output,
                 args.abundances,
-                args.kmer)
+                args.kmer,
+                length_threshold
+            )
 
         elif args.cmd == 'generate_sequence_features_multi':
             generate_sequence_features_multi(logger, args)
