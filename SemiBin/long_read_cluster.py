@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 import polars as pl
-from .utils import write_bins, normalize_kmer_motif_features
+from .utils import write_bins, min_max_features
 from .markers import estimate_seeds, get_marker
 from sklearn.cluster import dbscan
 from sklearn.neighbors import kneighbors_graph
@@ -64,16 +64,18 @@ def cluster_long_read(logger, model, data, device, is_combined,
             train_data_input = data[features_data["kmer"]].values
 
         else:
-            train_data_input = data[features_data["kmer"] + features_data["motif"]].values
-            train_data_input, _ = normalize_kmer_motif_features(train_data_input, train_data_input)
-            train_data_input = np.concatenate((train_data_input, train_data_motif_present), axis = 1)
+            train_data_input_kmer = data[features_data["kmer"]].values
+            train_data_input_kmer, _ = min_max_features(train_data_input_kmer, train_data_input_kmer)
+            train_data_input = np.concatenate((train_data_input_kmer, data[features_data["motif"]].values, train_data_motif_present), axis = 1)
     else:
         train_data_input = data.values
         if norm_abundance(data, features_data):
-            train_data_seq = train_data_input[features_data["kmer"] + features_data["motif"]].values
+            train_data_kmer = train_data_input[features_data["kmer"]].values
             if features_data["motif"]:
-                train_data_seq, _ = normalize_kmer_motif_features(train_data_seq, train_data_seq)
-                train_data_seq = np.concatenate((train_data_seq, train_data_motif_present), axis = 1)
+                train_data_seq_kmer, _ = min_max_features(train_data_seq_kmer, train_data_seq_kmer)
+                train_data_seq = np.concatenate((train_data_seq_kmer, train_data_input[features_data["motif"]], train_data_motif_present), axis = 1)
+            else:
+                train_data_seq = train_data_kmer
             
             train_data_depth = train_data_input[features_data["depth"]].values
             from sklearn.preprocessing import normalize

@@ -660,7 +660,7 @@ def get_features(df):
     assert len(features_dict['depth'] + features_dict['motif'] + features_dict['motif_present']) == len(set(features_dict['depth'] + features_dict['motif'] + features_dict['motif_present']) )
     return features_dict
 
-def normalize_kmer_motif_features(train_data, train_data_split):
+def min_max_features(train_data, train_data_split):
     """
     MinMax scaling was chosen to normalize kmers which is in the range of 0-0.07 however motifs are in the range of 0-1.
     """

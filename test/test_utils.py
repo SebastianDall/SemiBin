@@ -1,4 +1,4 @@
-from SemiBin.utils import get_must_link_threshold, split_data, n50_l50, maybe_crams2bams, norm_abundance, normalize_kmer_motif_features
+from SemiBin.utils import get_must_link_threshold, split_data, n50_l50, maybe_crams2bams, norm_abundance, min_max_features
 from SemiBin import utils
 from hypothesis import given, strategies as st
 import numpy as np
@@ -104,7 +104,7 @@ def test_normalize_kmer_motif_features():
 
     df = pd.DataFrame(data)
     df = df.values
-    df_norm, _ = normalize_kmer_motif_features(df, df)
+    df_norm, _ = min_max_features(df, df)
 
     
     # Expected normalized and concatenated DataFrame
@@ -123,7 +123,7 @@ def test_normalize_kmer_motif_features():
     })
     df_split = df_split.values
 
-    df_norm, df_split_norm = normalize_kmer_motif_features(df, df_split)
+    df_norm, df_split_norm = min_max_features(df, df_split)
     
     # We normalize the split df values based on the full df. That is why we expect 0.5 
     expected_df_split_norm = np.array([

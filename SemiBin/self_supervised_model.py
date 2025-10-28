@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
 import sys
 from .semi_supervised_model import Semi_encoding_single, Semi_encoding_multiple, feature_Dataset
-from .utils import norm_abundance, get_features, normalize_kmer_motif_features
+from .utils import norm_abundance, get_features, min_max_features
 
 def loss_function(embedding1, embedding2, label):
     relu = torch.nn.ReLU()
@@ -31,6 +31,8 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
     features_data = get_features(train_data)
     
     features_data_split = get_features(pd.read_csv(data_splits[0], index_col=0))
+
+    assert features_data.equals(features_data_split), "Feature mismatch between data and data_split detected."
     
     if not is_combined:
         train_data = train_data[features_data['kmer'] + features_data['motif'] + features_data['motif_present']].values
@@ -85,12 +87,12 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
                     train_data = data[features_data['kmer']].values
                     train_data_split = data_split[features_data_split['kmer']].values
                 else:
-                    train_data = data[features_data['kmer'] + features_data["motif"]].values
-                    train_data_split = data_split[features_data_split['kmer'] + features_data["motif"]].values
-                    train_data, train_data_split = normalize_kmer_motif_features(train_data, train_data_split)
+                    train_data_kmer = data[features_data['kmer']].values
+                    train_data_split_kmer = data_split[features_data_split['kmer']].values
+                    train_data_kmer, train_data_split_kmer = min_max_features(train_data_kmer, train_data_split_kmer)
 
-                    train_data = np.concatenate((train_data, train_data_motif_is_present_matrix), axis = 1)
-                    train_data_split = np.concatenate((train_data_split, train_data_split_motif_is_present_matrix), axis = 1)
+                    train_data = np.concatenate((train_data_kmer, data[features_data["motif"]].values, train_data_motif_is_present_matrix), axis = 1)
+                    train_data_split = np.concatenate((train_data_split_kmer, data_split[features_data_split["motif"]].values, train_data_split_motif_is_present_matrix), axis = 1)
                     
                 
             else:
@@ -99,12 +101,12 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
                         train_data_seq = data[features_data['kmer']].values
                         train_data_split_seq = data_split[features_data_split['kmer']].values
                     else:
-                        train_data_seq = data[features_data['kmer'] + features_data["motif"]].values
-                        train_data_split_seq = data_split[features_data_split['kmer'] + features_data["motif"]].values
-                        train_data_seq, train_data_split_seq = normalize_seq_motif_features(train_data_seq, train_data_split_seq)
+                        train_data_seq_kmer = data[features_data['kmer']].values
+                        train_data_split_seq_kmer = data_split[features_data_split['kmer']].values
+                        train_data_seq_kmer, train_data_split_seq_kmer = min_max_features(train_data_seq_kmer, train_data_split_seq_kmer)
 
-                        train_data_seq = np.concatenate((train_data_seq, train_data_motif_is_present_matrix), axis = 1)
-                        train_data_split_seq = np.concatenate((train_data_split_seq, train_data_split_motif_is_present_matrix), axis = 1)
+                        train_data_seq = np.concatenate((train_data_seq_kmer, data[features_data["motif"]].values, train_data_motif_is_present_matrix), axis = 1)
+                        train_data_split_seq = np.concatenate((train_data_split_seq_kmer, data_split[features_data_split["motif"]].values, train_data_split_motif_is_present_matrix), axis = 1)
                     
                     train_data_depth = train_data[features_data['depth']].values
                     train_data_depth = normalize(train_data_depth, axis=1, norm='l1')
