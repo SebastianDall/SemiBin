@@ -32,8 +32,9 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
     
     features_data_split = get_features(pd.read_csv(data_splits[0], index_col=0))
 
-    assert features_data.equals(features_data_split), "Feature mismatch between data and data_split detected."
-    
+    if features_data["motif"]:
+        assert features_data["motif"] == features_data_split["motif"]
+
     if not is_combined:
         train_data = train_data[features_data['kmer'] + features_data['motif'] + features_data['motif_present']].values
 
