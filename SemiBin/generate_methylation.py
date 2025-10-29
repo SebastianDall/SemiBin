@@ -221,6 +221,7 @@ def filter_must_links(data_split, max_distance):
 
     # Get methylation feature columns
     methylation_cols = [col for col in data_split.columns if col.startswith("methylation_value")]
+    motif_present_cols = [col for col in data_split.columns if col.startswith("motif_present")]
 
     if not methylation_cols:
         return data_split
@@ -239,18 +240,39 @@ def filter_must_links(data_split, max_distance):
     paired_data = data_with_base.filter(pl.col("base_contig").is_in(complete_pairs))
 
     # Separate _1 and _2 contigs
-    contigs_1 = paired_data.filter(pl.col("split_num") == "1").select(["base_contig"] + methylation_cols)
-    contigs_2 = paired_data.filter(pl.col("split_num") == "2").select(["base_contig"] + methylation_cols)
+    all_cols = ["base_contig"] + methylation_cols + motif_present_cols
+    contigs_1 = paired_data.filter(pl.col("split_num") == "1").select(all_cols)
+    contigs_2 = paired_data.filter(pl.col("split_num") == "2").select(all_cols)
 
     # Join to get pairs
     pairs = contigs_1.join(contigs_2, on="base_contig", suffix="_2")
 
-    # Calculate euclidean distance for each pair
+    # Calculate euclidean distance only on methylation values where both halves have motif present
     distances = []
     for row in pairs.iter_rows(named=True):
-        vals_1 = np.array([row[col] for col in methylation_cols])
-        vals_2 = np.array([row[col + "_2"] for col in methylation_cols])
-        distance = np.linalg.norm(vals_1 - vals_2)
+        valid_methylation_vals_1 = []
+        valid_methylation_vals_2 = []
+
+        for meth_col in methylation_cols:
+            # Find corresponding motif_present column
+            motif_present_col = meth_col.replace("methylation_value", "motif_present")
+
+            # Only include methylation values where both halves have the motif present
+            if (motif_present_col in row and
+                row[motif_present_col] > 0 and
+                row[motif_present_col + "_2"] > 0):
+                valid_methylation_vals_1.append(row[meth_col])
+                valid_methylation_vals_2.append(row[meth_col + "_2"])
+
+        # Calculate distance only if we have valid methylation values
+        if len(valid_methylation_vals_1) > 0:
+            vals_1 = np.array(valid_methylation_vals_1)
+            vals_2 = np.array(valid_methylation_vals_2)
+            distance = np.linalg.norm(vals_1 - vals_2)
+        else:
+            # If no shared motifs, set distance to infinity (will be filtered out)
+            distance = np.inf
+
         distances.append(distance)
 
     # Add distances to pairs dataframe
