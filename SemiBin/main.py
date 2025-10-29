@@ -360,6 +360,7 @@ def parse_args(args, with_methylation):
 
             if p in [generate_methylation_features_single, single_easy_bin]:
                 m.add_argument("--pileup", help = "Path to the pileup file", required = True)
+            if p in [generate_methylation_features_single]:
                 p.add_argument("--data", help="Path to the data file to append methylation.", required=False)
                 p.add_argument("--data-split", help="Path to the data split file to append methylation.", required=False)
             if p in [generate_methylation_features_multi, multi_easy_bin]:
@@ -1294,6 +1295,8 @@ def single_easy_binning(logger, args, binned_length,
     )
     
     if with_methylation:
+        args.data = os.path.join(args.output, "data.csv")
+        args.data_split = os.path.join(args.output, "data_split.csv")
         generate_methylation_features(
             logger,
             contig_fasta_path = args.contig_fasta,
