@@ -18,6 +18,21 @@ single_output_ref = 'test-outputs/single_output_with_ref'
 multi_output = 'test-outputs/multi_output_with_taxonomy'
 multi_output_ref = 'test-outputs/multi_output_with_ref'
 
+single_self_output = 'test-outputs/methylbin_single_easy'
+shutil.rmtree(single_self_output, ignore_errors=True)
+subprocess.check_call(
+        ['MethylBin', 'single_easy_bin',
+        '-i', 'test/methylation_data/geobacillus-plasmids.assembly.fasta',
+        '-o', single_self_output,
+        '-b', "test/methylation_data/geobacillus-plasmids.bam",
+        '--epochs', '1',
+        '--pileup', 'test/methylation_data/geobacillus-plasmids.pileup.bed.gz',
+        '--motifs', 'GATC_a_1', 'CCWGG_m_0',
+        ])
+
+assert os.path.exists(f'{single_self_output}/output_bins')
+assert len(os.listdir(f'{single_self_output}/output_bins')) == 2
+
 shutil.rmtree(single_output, ignore_errors=True)
 subprocess.check_call(
     ['SemiBin2', 'single_easy_bin',
