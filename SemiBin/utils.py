@@ -656,7 +656,7 @@ def get_features(df):
     # Populate 'motif' with indices of columns
     features_dict['motif'] = [column for i, column in enumerate(columns) if column.startswith("methylation_value") and check_motif(column)]
     
-    features_dict['motif_present'] = [column for i, column in enumerate(columns) if column.startswith("motif_present") and check_motif(column)]
+    features_dict['motif_present'] = [] #[column for i, column in enumerate(columns) if column.startswith("motif_present") and check_motif(column)]
     assert len(features_dict['depth'] + features_dict['motif'] + features_dict['motif_present']) == len(set(features_dict['depth'] + features_dict['motif'] + features_dict['motif_present']) )
     return features_dict
 
