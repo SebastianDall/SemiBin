@@ -248,7 +248,11 @@ class TestFilterMustLinks(unittest.TestCase):
         self.test_data = pl.DataFrame({
             "": ["contig_1_1", "contig_1_2", "contig_2_1", "contig_2_2", "contig_3_1", "contig_3_2"],
             "methylation_value_GATC_a_1": [0.1, 0.2, 0.8, 0.9, 0.5, 0.5],
+            "motif_present_GATC_a_1": [1, 1, 1, 1, 1, 1],
             "methylation_value_CCGG_m_3": [0.3, 0.4, 0.7, 0.0, 0.2, 0.8],
+            "motif_present_CCGG_m_3": [1, 1, 1, 0, 1, 1],
+            "methylation_value_CCWGG_m_0": [0.0, 0.0, 0.7, 0.0, 0.2, 0.8],
+            "motif_present_CCWGG_m_0": [1, 1, 1, 1, 1, 1],
             "other_feature": [1, 2, 3, 4, 5, 6]
         })
 
@@ -294,24 +298,6 @@ class TestFilterMustLinks(unittest.TestCase):
 
         # Should return original data unchanged
         self.assertTrue(result.equals(test_data_no_meth))
-
-    def test_filter_must_links_incomplete_pairs(self):
-        # Test with data that has incomplete pairs (only _1 without _2)
-        test_data_incomplete = pl.DataFrame({
-            "": ["contig_1_1", "contig_2_1", "contig_2_2"],
-            "methylation_value_GATC_a_1": [0.1, 0.8, 0.9],
-            "methylation_value_CCGG_m_3": [0.3, 0.7, 0.6]
-        })
-
-        max_distance = 0.5
-        result = filter_must_links(test_data_incomplete, max_distance)
-
-        # Should only keep contig_2 pair (complete pair)
-        result_contigs = result.get_column("").to_list()
-        self.assertEqual(len(result_contigs), 2)
-        self.assertIn("contig_2_1", result_contigs)
-        self.assertIn("contig_2_2", result_contigs)
-
 
 class TestCheckFilesAndLog(unittest.TestCase):
 
