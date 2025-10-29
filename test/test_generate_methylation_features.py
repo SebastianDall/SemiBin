@@ -84,17 +84,15 @@ def test_split_contigs(tmp_path, data):
     args = data["args"]
     args.output = str(tmp_path)
     contigs = ["contig_2", "contig_3"]
-    lengths = get_split_contig_lengths(data["assembly"], contigs)
+    lengths = get_contig_lengths_in_split(data["assembly"], contigs)
 
-    create_assembly_with_split_contigs(data["assembly"], lengths, os.path.join(args.output, "plasmid_split.fasta"))
-    
     motifs = ["GATC_a_1", "GATC_m_3"]
 
     current_output = find_data_split_methylation_parallel(
         contigs=contigs,
         contig_lengths=lengths,
         pileup_path=args.pileup,
-        assembly_path=os.path.join(args.output, "plasmid_split.fasta"),
+        assembly_path=args.contig_fasta,
         motifs=motifs,
         threads=1,
         min_valid_read_coverage=3,
@@ -120,71 +118,17 @@ def test_split_contigs(tmp_path, data):
         schema = schema
     )
     expected_output = expected_output\
-        .with_columns([
-            pl.col("contig").str.slice(0, pl.col("contig").str.len_chars() - 2).alias("base_contig"),
-            pl.col("contig").str.slice(-1, 1).alias("split_num")
-        ])\
         .sort([
-            "base_contig",
+            "contig",
             "motif",
-            "mod_position",
             "mod_type",
-            "split_num"
-        ]).drop(["base_contig", "split_num"])\
+            "mod_position",
+            # "split_num"
+        ])\
         .to_pandas()
         
-
-
     pd.testing.assert_frame_equal(expected_output, current_output)
 
-
-
-        
-class TestCreateAssemblyWithSplitContigs(unittest.TestCase):
-    def setUp(self):
-        # Set up a mock assembly with test contigs
-        self.assembly = {
-            "contig_1": SeqRecord(Seq("ATGCGTACGTAGCTAGCTAG"), id="contig_1"),
-            "contig_2": SeqRecord(Seq("TGCATGCTAGCTGACTGACT"), id="contig_2")
-        }
-        
-        # Define contigs to split
-        self.split_contigs = ["contig_1", "contig_2"]
-
-        # Output path for the test
-        import tempfile
-        self.temp_dir = tempfile.mkdtemp()
-        self.output_path = os.path.join(self.temp_dir, "test_split_contigs.fasta")
-
-    def test_create_assembly_with_split_contigs(self):
-        # Call the function to create split contigs
-        contig_lengths = get_split_contig_lengths(self.assembly, self.split_contigs)
-        create_assembly_with_split_contigs(self.assembly, contig_lengths, self.output_path)
-
-        # Read the output file and check its contents
-        with open(self.output_path, "r") as output_handle:
-            split_records = list(SeqIO.parse(output_handle, "fasta"))
-        
-        # Expected results: each contig should be split into two parts
-        expected_sequences = [
-            ("contig_1_1", "ATGCGTACGT"),
-            ("contig_1_2", "AGCTAGCTAG"),
-            ("contig_2_1", "TGCATGCTAG"),
-            ("contig_2_2", "CTGACTGACT")
-        ]
-        
-        # Check that we have the expected number of records
-        self.assertEqual(len(split_records), len(expected_sequences))
-
-        # Check that each split record has the correct ID and sequence
-        for record, (expected_id, expected_seq) in zip(split_records, expected_sequences):
-            self.assertEqual(record.id, expected_id)
-            self.assertEqual(str(record.seq), expected_seq)
-
-    def tearDown(self):
-        # Clean up the test output file
-        import shutil
-        shutil.rmtree(self.temp_dir)
 
 class TestCheckFilesExist(unittest.TestCase):
 
@@ -218,28 +162,6 @@ class TestCheckFilesExist(unittest.TestCase):
         
         # Check if the error message is correct
         self.assertIn('The file data.txt does not exist.', str(context.exception))
-
-
-
-
-# def test_generate_methylation_features():
-#     args = SetupArgs()
-    
-#     # create a mock logger
-#     logger = MagicMock()
-    
-#     generate_methylation_features(logger, args)
-    
-#     assert os.path.exists(os.path.join(args.output, "data_split.csv")), "data_split.csv should be created."
-#     assert os.path.exists(os.path.join(args.output, "data.csv")), "data.csv should be created."
-    
-#     # Cleanup
-#     os.remove(os.path.join(args.output, "data_split.csv"))
-#     os.remove(os.path.join(args.output, "data.csv"))
-#     os.remove(os.path.join(args.output, "contig_methylation.tsv"))
-#     os.remove(os.path.join(args.output, "contig_split.fasta"))
-#     os.rmdir(args.output)
-
 
 
 class TestFilterMustLinks(unittest.TestCase):

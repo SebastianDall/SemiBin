@@ -34,7 +34,7 @@ def read_fasta(path):
             contigs = SeqIO.to_dict(SeqIO.parse(handle, "fasta"))
     return contigs
 
-def get_split_contig_lengths(assembly, split_contigs):
+def get_contig_lengths_in_split(assembly, split_contigs):
     contig_lengths = {}
     for c in split_contigs:
         contig = assembly[c]
@@ -97,67 +97,69 @@ def find_data_split_methylation_parallel(
     methylation_value
 ):
 
-    ctx = multiprocessing.get_context("spawn")
-    with ctx.Pool(threads) as pool:
-        results = pool.starmap(
-            process_contig_split_methylation,
-            [(
-                contig,
-                contig_lengths[contig],
-                pileup_path,
-                assembly_path,
-                motifs,
-                min_valid_read_coverage,
-                min_valid_cov_to_diff_fraction,
-                methylation_value
-            ) for contig in contigs]
+    contig_len_df = pl.DataFrame({
+                                     "contig": contig_lengths.keys(),
+                                     "length": contig_lengths.values(),
+                                 })\
+        .with_columns(
+            half_length = pl.col("length") // 2
         )
 
-    valid_results = [df for df in results if df is not None and not df.is_empty()]
-    if not valid_results:
-        return pl.DataFrame()
+    contig_meth_features = epymetheus.methylation_pattern(
+        pileup=pileup_path,
+        assembly=assembly_path,
+        motifs = motifs,
+        output_type=epymetheus.MethylationOutput.Raw,
+        contigs=contigs,
+        threads=threads,
+        min_valid_read_coverage=min_valid_read_coverage,
+        min_valid_cov_to_diff_fraction=min_valid_cov_to_diff_fraction,
+        allow_assembly_pileup_mismatch = True
+    )
 
-    combined_df = pl.concat(valid_results, how = "vertical")\
-        .with_columns([
-            pl.col("contig").str.slice(0, pl.col("contig").str.len_chars() - 2).alias("base_contig"),
-            pl.col("contig").str.slice(-1, 1).alias("split_num")
-        ])\
-        .sort([
-            "base_contig",
-            "motif",
-            "mod_position",
-            "mod_type",
-            "split_num"
-        ]).drop(["base_contig", "split_num"])
-    return combined_df
+    contig_meth_features = contig_meth_features\
+        .join(other=contig_len_df, on = "contig", how="left")\
+        .with_columns(
+            pl.when(pl.col("start") < pl.col("half_length")).then(pl.col("contig").cast(pl.String) + "_1").otherwise(pl.col("contig").cast(pl.String) + "_2").alias("contig"),
+            pl.when(pl.col("start") < pl.col("half_length")).then(pl.col("start")).otherwise(pl.col("start") - pl.col("half_length")).alias("start")
+        )\
+        .with_columns(
+            (pl.col("n_modified") / pl.col("n_valid_cov")).alias("fraction_mod")
+        )
+
+    if methylation_value == epymetheus.MethylationOutput.Median:
+        contig_meth_features = contig_meth_features\
+            .group_by(["contig", "motif", "mod_type", "mod_position"])\
+            .agg(
+                pl.col("fraction_mod").median().alias("methylation_value"),
+                pl.col("n_valid_cov").mean().alias("mean_read_cov"),
+                pl.col("contig").count().alias("n_motif_obs"),
+            )
+    elif methylation_value == epymetheus.MethylationOutput.WeightedMean:
+        contig_meth_features = contig_meth_features\
+            .group_by(["contig", "motif", "mod_type", "mod_position"])\
+            .agg(
+                pl.col("n_valid_cov").sum().alias("total_cov"),
+                (pl.col("fraction_mod") * pl.col("n_valid_cov")).alias("weighted_sum"),
+                pl.col("n_valid_cov").mean().alias("mean_read_cov"),
+                pl.col("contig").count().alias("n_motif_obs"),
+            )\
+            .with_columns(
+                (pl.col("weighted_sum") / pl.col("total_cov")).alias("methylation_value")
+            )\
+            .drop(["weighted_sum", "total_cov"])
+    else:
+        raise ValueError
+
+    contig_meth_features = contig_meth_features\
+        .sort(["contig", "motif", "mod_type", "mod_position"])
+    return contig_meth_features
+
+
+
+    
     
 
-def create_assembly_with_split_contigs(assembly, contig_lengths, output):
-    split_records = []
-    for c in contig_lengths.keys():
-        contig = assembly[c]
-        contig_half = contig_lengths[c] // 2
-
-        s1 = contig.seq[:contig_half]
-        s2 = contig.seq[contig_half:]
-
-        r1 = SeqRecord(
-            s1,
-            contig.id + "_1",
-            description = ""
-        )
-        r2 = SeqRecord(
-            s2,
-            contig.id + "_2",
-            description = ""
-        )
-
-        split_records.append(r1)
-        split_records.append(r2)
-    with open(output, "w") as output_handle:
-        SeqIO.write(split_records, output_handle, "fasta")
-
-        
 def check_files_exist(paths=[]):
     """
     Checks if the given files and directories exist.
@@ -363,11 +365,7 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     contigs_to_split = data_split.select("contig").to_pandas()
     contigs_to_split = contigs_to_split["contig"].str.rsplit("_",n=1).str[0].unique()
 
-    contig_lengths_for_splitting = get_split_contig_lengths(assembly, contigs_to_split)
-    logger.info("Splitting assembly")
-    create_assembly_with_split_contigs(
-        assembly, contig_lengths_for_splitting , os.path.join(args.output, "contig_split.fasta")
-    )
+    contig_lengths_for_splitting = get_contig_lengths_in_split(assembly, contigs_to_split)
 
     number_of_motifs = len(motifs)
     logger.info(f"Motifs found (#{number_of_motifs}): {motifs}")
@@ -396,7 +394,7 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
         contigs = contigs_to_split,
         contig_lengths=contig_lengths_for_splitting,
         pileup_path=pileup_path,
-        assembly_path=os.path.join(args.output, "contig_split.fasta"),
+        assembly_path=contig_fasta_path,
         motifs =motifs,
         min_valid_read_coverage=args.min_valid_read_coverage,
         min_valid_cov_to_diff_fraction=0.80,
