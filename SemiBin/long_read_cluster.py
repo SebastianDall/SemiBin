@@ -56,9 +56,6 @@ def cluster_long_read(logger, model, data, device, is_combined,
     from .utils import norm_abundance
     contig_list = data.index.tolist()
 
-    if features_data['motif']:
-        train_data_motif_present = data[features_data['motif_present']].values
-    
     if not is_combined:
         if not features_data["motif"]:
             train_data_input = data[features_data["kmer"]].values
@@ -66,14 +63,14 @@ def cluster_long_read(logger, model, data, device, is_combined,
         else:
             train_data_input_kmer = data[features_data["kmer"]].values
             train_data_input_kmer, _ = min_max_features(train_data_input_kmer, train_data_input_kmer)
-            train_data_input = np.concatenate((train_data_input_kmer, data[features_data["motif"]].values, train_data_motif_present), axis = 1)
+            train_data_input = np.concatenate((train_data_input_kmer, data[features_data["motif"]].values), axis = 1)
     else:
         train_data_input = data.values
         if norm_abundance(data, features_data):
             train_data_kmer = train_data_input[features_data["kmer"]].values
             if features_data["motif"]:
                 train_data_seq_kmer, _ = min_max_features(train_data_seq_kmer, train_data_seq_kmer)
-                train_data_seq = np.concatenate((train_data_seq_kmer, train_data_input[features_data["motif"]], train_data_motif_present), axis = 1)
+                train_data_seq = np.concatenate((train_data_seq_kmer, train_data_input[features_data["motif"]]), axis = 1)
             else:
                 train_data_seq = train_data_kmer
             

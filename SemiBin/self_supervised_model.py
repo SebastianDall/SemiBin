@@ -36,7 +36,7 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
         assert features_data["motif"] == features_data_split["motif"]
 
     if not is_combined:
-        train_data = train_data[features_data['kmer'] + features_data['motif'] + features_data['motif_present']].values
+        train_data = train_data[features_data['kmer'] + features_data['motif']].values
 
 
     torch.set_num_threads(num_process)
@@ -80,9 +80,6 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
             train_data_split = data_split.values
             n_must_link = len(train_data_split)
 
-            if features_data["motif"]:
-                train_data_motif_is_present_matrix = data[features_data["motif_present"]].values
-                train_data_split_motif_is_present_matrix = data_split[features_data_split["motif_present"]].values
             if not is_combined:
                 if not features_data["motif"]:
                     train_data = data[features_data['kmer']].values
@@ -92,8 +89,8 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
                     train_data_split_kmer = data_split[features_data_split['kmer']].values
                     train_data_kmer, train_data_split_kmer = min_max_features(train_data_kmer, train_data_split_kmer)
 
-                    train_data = np.concatenate((train_data_kmer, data[features_data["motif"]].values, train_data_motif_is_present_matrix), axis = 1)
-                    train_data_split = np.concatenate((train_data_split_kmer, data_split[features_data_split["motif"]].values, train_data_split_motif_is_present_matrix), axis = 1)
+                    train_data = np.concatenate((train_data_kmer, data[features_data["motif"]].values), axis = 1)
+                    train_data_split = np.concatenate((train_data_split_kmer, data_split[features_data_split["motif"]].values), axis = 1)
                     
                 
             else:
@@ -106,8 +103,8 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
                         train_data_split_seq_kmer = data_split[features_data_split['kmer']].values
                         train_data_seq_kmer, train_data_split_seq_kmer = min_max_features(train_data_seq_kmer, train_data_split_seq_kmer)
 
-                        train_data_seq = np.concatenate((train_data_seq_kmer, data[features_data["motif"]].values, train_data_motif_is_present_matrix), axis = 1)
-                        train_data_split_seq = np.concatenate((train_data_split_seq_kmer, data_split[features_data_split["motif"]].values, train_data_split_motif_is_present_matrix), axis = 1)
+                        train_data_seq = np.concatenate((train_data_seq_kmer, data[features_data["motif"]].values), axis = 1)
+                        train_data_split_seq = np.concatenate((train_data_split_seq_kmer, data_split[features_data_split["motif"]].values), axis = 1)
                     
                     train_data_depth = train_data[features_data['depth']].values
                     train_data_depth = normalize(train_data_depth, axis=1, norm='l1')
