@@ -88,6 +88,40 @@ def calculate_data_split_methylation(
             allow_assembly_pileup_mismatch = True
         )
 
+        batch_meth_features = batch_meth_features\
+            .join(other=contig_len_df, on = "contig", how="left")\
+            .with_columns(
+                pl.when(pl.col("start") < pl.col("half_length")).then(pl.col("contig").cast(pl.String) + "_1").otherwise(pl.col("contig").cast(pl.String) + "_2").alias("contig"),
+                pl.when(pl.col("start") < pl.col("half_length")).then(pl.col("start")).otherwise(pl.col("start") - pl.col("half_length")).alias("start")
+            )\
+            .with_columns(
+                (pl.col("n_modified") / pl.col("n_valid_cov")).alias("fraction_mod")
+            )
+
+        if methylation_value == epymetheus.MethylationOutput.Median:
+            batch_meth_features = batch_meth_features\
+                .group_by(["contig", "motif", "mod_type", "mod_position"])\
+                .agg(
+                    pl.col("fraction_mod").median().alias("methylation_value"),
+                    pl.col("n_valid_cov").mean().alias("mean_read_cov"),
+                    pl.col("contig").count().alias("n_motif_obs"),
+                )
+        elif methylation_value == epymetheus.MethylationOutput.WeightedMean:
+            batch_meth_features = batch_meth_features\
+                .group_by(["contig", "motif", "mod_type", "mod_position"])\
+                .agg(
+                    pl.col("n_valid_cov").sum().alias("total_cov"),
+                    (pl.col("fraction_mod") * pl.col("n_valid_cov")).alias("weighted_sum"),
+                    pl.col("n_valid_cov").mean().alias("mean_read_cov"),
+                    pl.col("contig").count().alias("n_motif_obs"),
+                )\
+                .with_columns(
+                    (pl.col("weighted_sum") / pl.col("total_cov")).alias("methylation_value")
+                )\
+                .drop(["weighted_sum", "total_cov"])
+        else:
+            raise ValueError
+
         if not batch_meth_features.is_empty():
             all_meth_features.append(batch_meth_features)
 
@@ -106,39 +140,6 @@ def calculate_data_split_methylation(
             "n_motif_obs": pl.Int64
         })
 
-    contig_meth_features = contig_meth_features\
-        .join(other=contig_len_df, on = "contig", how="left")\
-        .with_columns(
-            pl.when(pl.col("start") < pl.col("half_length")).then(pl.col("contig").cast(pl.String) + "_1").otherwise(pl.col("contig").cast(pl.String) + "_2").alias("contig"),
-            pl.when(pl.col("start") < pl.col("half_length")).then(pl.col("start")).otherwise(pl.col("start") - pl.col("half_length")).alias("start")
-        )\
-        .with_columns(
-            (pl.col("n_modified") / pl.col("n_valid_cov")).alias("fraction_mod")
-        )
-
-    if methylation_value == epymetheus.MethylationOutput.Median:
-        contig_meth_features = contig_meth_features\
-            .group_by(["contig", "motif", "mod_type", "mod_position"])\
-            .agg(
-                pl.col("fraction_mod").median().alias("methylation_value"),
-                pl.col("n_valid_cov").mean().alias("mean_read_cov"),
-                pl.col("contig").count().alias("n_motif_obs"),
-            )
-    elif methylation_value == epymetheus.MethylationOutput.WeightedMean:
-        contig_meth_features = contig_meth_features\
-            .group_by(["contig", "motif", "mod_type", "mod_position"])\
-            .agg(
-                pl.col("n_valid_cov").sum().alias("total_cov"),
-                (pl.col("fraction_mod") * pl.col("n_valid_cov")).alias("weighted_sum"),
-                pl.col("n_valid_cov").mean().alias("mean_read_cov"),
-                pl.col("contig").count().alias("n_motif_obs"),
-            )\
-            .with_columns(
-                (pl.col("weighted_sum") / pl.col("total_cov")).alias("methylation_value")
-            )\
-            .drop(["weighted_sum", "total_cov"])
-    else:
-        raise ValueError
 
     contig_meth_features = contig_meth_features\
         .sort(["contig", "motif", "mod_type", "mod_position"])
