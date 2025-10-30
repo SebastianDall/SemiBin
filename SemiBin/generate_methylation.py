@@ -12,6 +12,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import re
 import polars as pl
+from tqdm import tqdm
 
 def read_fasta(path):
     # Check if the file exists
@@ -44,48 +45,7 @@ def get_contig_lengths_in_split(assembly, split_contigs):
     return contig_lengths
     
 
-def process_contig_split_methylation(
-    contig_name,
-    contig_length,
-    pileup_path,
-    assembly_path,
-    motifs,
-    min_valid_read_coverage,
-    min_valid_cov_to_diff_fraction,
-    methylation_value,
-):
-
-    try:
-        pileup_df = epymetheus.query_pileup_records(
-            pileup_path=pileup_path,
-            contigs=[contig_name],
-        )
-    except Exception as e:
-        return None
-
-    contig_half = contig_length // 2
-    pileup_split_df = pileup_df\
-        .with_columns(
-            pl.when(pl.col("start") < contig_half).then(pl.col("contig").cast(pl.String) + "_1").otherwise(pl.col("contig").cast(pl.String) + "_2").alias("contig")
-        )\
-        .with_columns(
-            pl.when(pl.col("start") < contig_half).then(pl.col("start")).otherwise(pl.col("start") - contig_half).alias("start")
-        )
-
-    contig_meth_features = epymetheus.methylation_pattern_from_dataframe(
-        pileup_df=pileup_split_df,
-        assembly=assembly_path,
-        motifs = motifs,
-        output_type=methylation_value,
-        threads=1,
-        min_valid_read_coverage=min_valid_read_coverage,
-        min_valid_cov_to_diff_fraction=min_valid_cov_to_diff_fraction
-    )
-
-    return contig_meth_features
-
-
-def find_data_split_methylation_parallel(
+def calculate_data_split_methylation(
     contigs,
     contig_lengths,
     pileup_path,
@@ -105,17 +65,46 @@ def find_data_split_methylation_parallel(
             half_length = pl.col("length") // 2
         )
 
-    contig_meth_features = epymetheus.methylation_pattern(
-        pileup=pileup_path,
-        assembly=assembly_path,
-        motifs = motifs,
-        output_type=epymetheus.MethylationOutput.Raw,
-        contigs=contigs,
-        threads=threads,
-        min_valid_read_coverage=min_valid_read_coverage,
-        min_valid_cov_to_diff_fraction=min_valid_cov_to_diff_fraction,
-        allow_assembly_pileup_mismatch = True
-    )
+    # Convert contigs to list if it's not already
+    contigs_list = list(contigs)
+    batch_size = 1000
+
+    # Split contigs into batches
+    contig_batches = [contigs_list[i:i + batch_size] for i in range(0, len(contigs_list), batch_size)]
+
+    all_meth_features = []
+
+    # Process each batch with progress bar
+    for batch in tqdm(contig_batches, desc="Processing contig batches"):
+        batch_meth_features = epymetheus.methylation_pattern(
+            pileup=pileup_path,
+            assembly=assembly_path,
+            motifs = motifs,
+            output_type=epymetheus.MethylationOutput.Raw,
+            contigs=batch,
+            threads=threads,
+            min_valid_read_coverage=min_valid_read_coverage,
+            min_valid_cov_to_diff_fraction=min_valid_cov_to_diff_fraction,
+            allow_assembly_pileup_mismatch = True
+        )
+
+        if not batch_meth_features.is_empty():
+            all_meth_features.append(batch_meth_features)
+
+    # Combine all batch results
+    if all_meth_features:
+        contig_meth_features = pl.concat(all_meth_features)
+    else:
+        # Return empty dataframe with expected schema if no results
+        return pl.DataFrame(schema={
+            "contig": pl.String,
+            "motif": pl.String,
+            "mod_type": pl.String,
+            "mod_position": pl.Int64,
+            "methylation_value": pl.Float64,
+            "mean_read_cov": pl.Float64,
+            "n_motif_obs": pl.Int64
+        })
 
     contig_meth_features = contig_meth_features\
         .join(other=contig_len_df, on = "contig", how="left")\
@@ -390,7 +379,7 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     )
     
     logger.info("Running epimetheus for split contigs")
-    contig_split_methylation = find_data_split_methylation_parallel(
+    contig_split_methylation = calculate_data_split_methylation(
         contigs = contigs_to_split,
         contig_lengths=contig_lengths_for_splitting,
         pileup_path=pileup_path,

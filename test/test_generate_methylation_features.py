@@ -88,7 +88,7 @@ def test_split_contigs(tmp_path, data):
 
     motifs = ["GATC_a_1", "GATC_m_3"]
 
-    current_output = find_data_split_methylation_parallel(
+    current_output = calculate_data_split_methylation(
         contigs=contigs,
         contig_lengths=lengths,
         pileup_path=args.pileup,
