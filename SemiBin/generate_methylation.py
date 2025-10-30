@@ -72,7 +72,7 @@ def calculate_data_split_methylation(
     # Split contigs into batches
     contig_batches = [contigs_list[i:i + batch_size] for i in range(0, len(contigs_list), batch_size)]
 
-    all_meth_features = []
+    final_result = None
 
     # Process each batch with progress bar
     for batch in tqdm(contig_batches, desc="Processing contig batches"):
@@ -122,28 +122,15 @@ def calculate_data_split_methylation(
         else:
             raise ValueError
 
-        if not batch_meth_features.is_empty():
-            all_meth_features.append(batch_meth_features)
+        if final_result is None:
+            final_result = batch_meth_features
+        else:
+            final_result = pl.concat([final_result, batch_meth_features])
+        del batch_meth_features
 
-    # Combine all batch results
-    if all_meth_features:
-        contig_meth_features = pl.concat(all_meth_features)
-    else:
-        # Return empty dataframe with expected schema if no results
-        return pl.DataFrame(schema={
-            "contig": pl.String,
-            "motif": pl.String,
-            "mod_type": pl.String,
-            "mod_position": pl.Int64,
-            "methylation_value": pl.Float64,
-            "mean_read_cov": pl.Float64,
-            "n_motif_obs": pl.Int64
-        })
-
-
-    contig_meth_features = contig_meth_features\
+    final_result = final_result\
         .sort(["contig", "motif", "mod_type", "mod_position"])
-    return contig_meth_features
+    return final_result
 
 
 
