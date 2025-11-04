@@ -67,7 +67,7 @@ def calculate_data_split_methylation(
 
     # Convert contigs to list if it's not already
     contigs_list = list(contigs)
-    batch_size = 1000
+    batch_size = 50
 
     # Split contigs into batches
     contig_batches = [contigs_list[i:i + batch_size] for i in range(0, len(contigs_list), batch_size)]
