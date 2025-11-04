@@ -111,7 +111,7 @@ def calculate_data_split_methylation(
                 .group_by(["contig", "motif", "mod_type", "mod_position"])\
                 .agg(
                     pl.col("n_valid_cov").sum().alias("total_cov"),
-                    (pl.col("fraction_mod") * pl.col("n_valid_cov")).alias("weighted_sum"),
+                    (pl.col("fraction_mod") * pl.col("n_valid_cov")).sum().alias("weighted_sum"),
                     pl.col("n_valid_cov").mean().alias("mean_read_cov"),
                     pl.col("contig").count().alias("n_motif_obs"),
                 )\
