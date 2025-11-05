@@ -46,10 +46,9 @@ def get_contig_lengths_in_split(assembly, split_contigs):
     
 
 def calculate_data_split_methylation(
-    contigs,
+    assembly,
     contig_lengths,
     pileup_path,
-    assembly_path,
     motifs,
     threads,
     min_valid_read_coverage,
@@ -66,7 +65,7 @@ def calculate_data_split_methylation(
         )
 
     # Convert contigs to list if it's not already
-    contigs_list = list(contigs)
+    contigs_list = contig_len_df["contig"].to_list()
     batch_size = 50
 
     # Split contigs into batches
@@ -78,7 +77,7 @@ def calculate_data_split_methylation(
     for batch in tqdm(contig_batches, desc="Processing contig batches"):
         batch_meth_features = epymetheus.methylation_pattern(
             pileup=pileup_path,
-            assembly=assembly_path,
+            assembly=assembly,
             motifs = motifs,
             output_type=epymetheus.MethylationOutput.Raw,
             contigs=batch,
@@ -368,10 +367,9 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     
     logger.info("Running epimetheus for split contigs")
     contig_split_methylation = calculate_data_split_methylation(
-        contigs = contigs_to_split,
+        assembly = assembly,
         contig_lengths=contig_lengths_for_splitting,
         pileup_path=pileup_path,
-        assembly_path=contig_fasta_path,
         motifs =motifs,
         min_valid_read_coverage=args.min_valid_read_coverage,
         min_valid_cov_to_diff_fraction=0.80,
