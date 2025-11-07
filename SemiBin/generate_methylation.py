@@ -367,7 +367,7 @@ def generate_methylation_features(logger, contig_fasta_path, pileup_path, args, 
     
     logger.info("Running epimetheus for split contigs")
     contig_split_methylation = calculate_data_split_methylation(
-        assembly = assembly,
+        assembly = contig_fasta_path,
         contig_lengths=contig_lengths_for_splitting,
         pileup_path=pileup_path,
         motifs =motifs,
