@@ -228,29 +228,10 @@ def filter_must_links(data_split, max_distance):
     # Calculate euclidean distance only on methylation values where both halves have motif present
     distances = []
     for row in pairs.iter_rows(named=True):
-        valid_methylation_vals_1 = []
-        valid_methylation_vals_2 = []
+        vals_1 = np.array([row[meth_col] for meth_col in methylation_cols])
+        vals_2 = np.array([row[meth_col + "_2"] for meth_col in methylation_cols])
 
-        for meth_col in methylation_cols:
-            # Find corresponding motif_present column
-            motif_present_col = meth_col.replace("methylation_value", "motif_present")
-
-            # Only include methylation values where both halves have the motif present
-            if (motif_present_col in row and
-                row[motif_present_col] > 0 and
-                row[motif_present_col + "_2"] > 0):
-                valid_methylation_vals_1.append(row[meth_col])
-                valid_methylation_vals_2.append(row[meth_col + "_2"])
-
-        # Calculate distance only if we have valid methylation values
-        if len(valid_methylation_vals_1) > 0:
-            vals_1 = np.array(valid_methylation_vals_1)
-            vals_2 = np.array(valid_methylation_vals_2)
-            distance = np.linalg.norm(vals_1 - vals_2)
-        else:
-            # If no shared motifs, set distance to infinity (will be filtered out)
-            distance = np.inf
-
+        distance = np.linalg.norm(vals_1 - vals_2)
         distances.append(distance)
 
     # Add distances to pairs dataframe
