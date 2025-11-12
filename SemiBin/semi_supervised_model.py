@@ -8,6 +8,8 @@ from .markers import estimate_seeds
 from torch.optim import lr_scheduler
 import sys
 
+from .meth_model import Self_encoding_dual_stream
+
 
 class Semi_encoding_multiple(torch.nn.Module):
     """
@@ -137,6 +139,8 @@ def model_load(path, device, warn_on_old_format=True):
         return model
     if saved['model_name'] == 'Semi_encoding_single':
         model = Semi_encoding_single(saved['params'][0])
+    elif saved['model_name'] == 'Self_encoding_dual_stream':
+        model = Self_encoding_dual_stream(saved['params'][0], saved['params'][1], saved['params'][2], saved['params'][3])
     elif saved['model_name'] == 'Semi_encoding_multiple':
         model = Semi_encoding_multiple(saved['params'][0])
     model.load_state_dict(saved['model_state_dict'])

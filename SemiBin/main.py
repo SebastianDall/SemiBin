@@ -1123,7 +1123,7 @@ def training(logger, contig_fasta,
     model: [single/several]
     """
     from .semi_supervised_model import train_semi
-    from .self_supervised_model import train_self
+    from .self_supervised_methylation import train_self
     import pandas as pd
 
     if mode == 'single':
@@ -1212,7 +1212,7 @@ def binning_preprocess(data, depth_metabat2, model_path, environment, device):
 
 def binning_long(logger, data, minfasta, binned_length, contig_dict,
         model_path, output, device, environment, *, args):
-    from .long_read_cluster import cluster_long_read
+    from .kmer_meth_cluster import cluster_long_read
     logger.info('Start binning.')
     is_combined, n_sample, data, model, features_data = binning_preprocess(data, getattr(args, 'depth_metabat2', None), model_path, environment, device)
     
