@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import math
 
 class MethylationAttentionLayer(nn.Module):
     """Attention layer specifically for methylation features"""
@@ -20,8 +21,10 @@ class MethylationAttentionLayer(nn.Module):
         
         self.value_projection = nn.Linear(1, hidden_dim)
 
-        # Positional encoding for motif positions
-        self.position_embedding = nn.Parameter(torch.randn(1, n_motifs, hidden_dim))
+        # # Positional encoding for motif positions
+        # self.position_embedding = nn.Parameter(torch.randn(1, n_motifs, hidden_dim))
+
+        self.register_buffer("position_embedding", self._create_sinusoidal_embeddings(n_motifs, hidden_dim))
 
         # Positional encoding for motif positions
         self.absent_embedding = nn.Parameter(torch.randn(1, 1, hidden_dim))
@@ -29,6 +32,17 @@ class MethylationAttentionLayer(nn.Module):
         # Output projection
         self.output_projection = nn.Linear(hidden_dim, hidden_dim)
         
+    def _create_sinusoidal_embeddings(self, n_positions, dim):
+        position = torch.arange(n_positions).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, dim, 2) * -(math.log(10000.0) / dim))
+
+        pe = torch.zeros(1, n_positions, dim)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+
+        return pe
+
+    
     def forward(self, methylation_values, motif_present_mask):
         """
         methylation_values: (batch_size, n_motifs) - methylation percentages
