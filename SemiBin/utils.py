@@ -674,3 +674,22 @@ def min_max_features(train_data, train_data_split):
     assert train_data.shape[1] == train_data_split.shape[1]
     # assert (train_data.shape[1] - train_data_split.shape[1]) % 2 == 0
     return train_data, train_data_split
+
+def remove_must_link_pairs(indices1, indices2, train_data, max_similarity = 1.5):
+    """
+    Filter indices based on cannot-links being too similar in space.
+    """
+    import numpy as np
+    assert len(indices1) == len(indices2), "Indices do not match in length"
+
+    distances = []
+    for i in range(len(indices1)):
+        vals_1 = train_data[indices1[i], :]
+        vals_2 = train_data[indices2[i], :]
+        distance = np.linalg.norm(vals_1 - vals_2)
+        distances.append(distance)
+
+    distances = np.array(distances)
+
+    valid_mask = distances > max_similarity
+    return indices1[valid_mask], indices2[valid_mask]
