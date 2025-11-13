@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
 import sys
+import os
 from .semi_supervised_model import Semi_encoding_single, Semi_encoding_multiple, feature_Dataset
 from .utils import norm_abundance, get_features, min_max_features, remove_must_link_pairs
 
@@ -139,15 +140,16 @@ def train_self(logger, datapaths, data_splits, is_combined=True,
                     f'Number of cannot-link pairs: {n_cannot_link}')
 
             if epoch % 5 == 0:
+                outdir = os.path.dirname(datapaths[0])
                 cannot_link_left = pd.DataFrame(train_data[indices1])
-                cannot_link_left.to_csv(f"cannot_link_left_{epoch}.csv")
+                cannot_link_left.to_csv(os.path.join(outdir, f"cannot_link_left_{epoch}.csv"))
                 cannot_link_right = pd.DataFrame(train_data[indices2])
-                cannot_link_right.to_csv(f"cannot_link_right_{epoch}.csv")
+                cannot_link_right.to_csv(os.path.join(outdir, f"cannot_link_right_{epoch}.csv"))
 
                 must_link_left = pd.DataFrame(train_data_split[::2])
-                must_link_left.to_csv(f"must_link_left_{epoch}.csv")
+                must_link_left.to_csv(os.path.join(outdir, f"must_link_left_{epoch}.csv"))
                 must_link_right = pd.DataFrame(train_data_split[1::2])
-                must_link_right.to_csv(f"must_link_right_{epoch}.csv")
+                must_link_right.to_csv(os.path.join(outdir, f"must_link_right_{epoch}.csv"))
                 
 
             train_input_1 = np.concatenate(
