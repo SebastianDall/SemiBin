@@ -44,6 +44,7 @@
             libGL
             stdenv.cc.cc.lib
             glib
+            zlib
 
             bedtools
             prodigal
@@ -54,7 +55,7 @@
           shellHook = ''
             export PYTHONPATH="$PWD:$PYTHONPATH"
 
-            export LD_LIBRARY_PATH="${pkgs.libGL}/lib/:${pkgs.stdenv.cc.cc.lib}/lib/:${pkgs.glib.out}/lib/:$LD_LIBRARY_PATH"
+            export LD_LIBRARY_PATH="${pkgs.libGL}/lib/:${pkgs.zlib}/lib/:${pkgs.stdenv.cc.cc.lib}/lib/:${pkgs.glib.out}/lib/:$LD_LIBRARY_PATH"
 
             export MAMBA_ROOT_PREFIX="$PWD/.micromamba";
             if [ "$SHELL" = "/usr/bin/fish" ] || "$(basename "$SHELL" = "fish")"; then
