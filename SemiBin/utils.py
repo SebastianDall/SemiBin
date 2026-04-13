@@ -675,7 +675,7 @@ def min_max_features(train_data, train_data_split):
     # assert (train_data.shape[1] - train_data_split.shape[1]) % 2 == 0
     return train_data, train_data_split
 
-def remove_must_link_pairs(indices1, indices2, train_data, max_similarity = 1.5):
+def remove_must_link_pairs(indices1, indices2, train_data, max_similarity = 1.25):
     """
     Filter indices based on cannot-links being too similar in space.
     """
